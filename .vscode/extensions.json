@@ -1,0 +1,14 @@
+{
+  "recommendations": [
+    "biomejs.biome",
+    "bradlc.vscode-tailwindcss",
+    "charliermarsh.ruff",
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "github.vscode-github-actions",
+    "yoavbls.pretty-ts-errors",
+    "drizzle-team.drizzle-vscode",
+    "EditorConfig.EditorConfig",
+    "ms-azuretools.vscode-docker"
+  ]
+}

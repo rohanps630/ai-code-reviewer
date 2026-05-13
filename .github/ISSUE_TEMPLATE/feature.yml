@@ -1,0 +1,38 @@
+name: Feature / improvement
+description: Suggest a new capability or improvement
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this solve? Skip if it's an exploration.
+    validations:
+      required: false
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+    validations:
+      required: true
+
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Which phase does this belong to?
+      options:
+        - "Phase 1: Foundations"
+        - "Phase 2: RAG"
+        - "Phase 3: Agents"
+        - "Phase 4: Evals"
+        - "Phase 5: Production"
+        - "Phase 6: Fine-tuning"
+        - "Out of phase / nice-to-have"
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

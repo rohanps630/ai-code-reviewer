@@ -1,0 +1,86 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.uv/
+
+# Build outputs
+.next/
+dist/
+build/
+out/
+*.tsbuildinfo
+.turbo/
+
+# Env files (NEVER commit secrets)
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+# Only .env.example is committed
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*~
+
+# Test
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Eval results (keep summaries, ignore raw)
+evals/results/**/raw/
+evals/results/**/traces/
+!evals/results/**/summary.json
+
+# Database
+*.db
+*.sqlite
+*.sqlite-journal
+
+# Misc
+.cache/
+*.tmp
+*.bak
+
+# Sentry
+.sentryclirc
+
+# Supabase
+supabase/.branches/
+supabase/.temp/
+
+# Python build
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+
+# Generated
+packages/db/src/migrations/meta/_journal.json.bak

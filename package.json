@@ -1,0 +1,39 @@
+{
+  "name": "ai-code-reviewer",
+  "version": "0.0.1",
+  "private": true,
+  "description": "AI agent that reviews GitHub pull requests using code-aware retrieval and tool use.",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "db:generate": "pnpm --filter @acr/db generate",
+    "db:migrate": "pnpm --filter @acr/db migrate",
+    "db:studio": "pnpm --filter @acr/db studio",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "prepare": "lefthook install"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.0",
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0",
+    "lefthook": "^1.7.0",
+    "turbo": "^2.3.0",
+    "typescript": "^5.7.0"
+  },
+  "pnpm": {
+    "peerDependencyRules": {
+      "ignoreMissing": ["@types/*"]
+    }
+  }
+}

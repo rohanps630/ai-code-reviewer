@@ -1,0 +1,16 @@
+Read AGENTS.md at the repository root before doing anything else.
+
+AGENTS.md is the single source of truth for this project: stack choices,
+folder structure, naming conventions, commit format, and explicit "never do"
+rules. Every constraint there applies to you.
+
+If a request would require deviating from AGENTS.md (e.g. introducing a
+new framework, modifying protected paths, bypassing prompt versioning),
+stop and ask the human first.
+
+Protected paths — do not edit without explicit instruction:
+- packages/agent/src/loop.ts
+- packages/agent/src/prompts/
+- packages/agent/src/retrieval/
+
+Stack choices are decided. Do not substitute alternatives without an ADR.

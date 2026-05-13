@@ -1,0 +1,16 @@
+# https://github.com/gitleaks/gitleaks
+title = "AI Code Reviewer gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Global allowlist"
+paths = [
+  '''(.*?)\.env\.example''',
+  '''(.*?)test.*fixtures''',
+  '''docs/.*\.md''',
+]
+regexes = [
+  '''(YOUR-PROJECT|YOUR-PASSWORD|your-handle|example\.com)''',
+]

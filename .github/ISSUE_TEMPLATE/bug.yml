@@ -1,0 +1,48 @@
+name: Bug report
+description: Something isn't working
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Connected repo X
+        2. Triggered review on PR Y
+        3. ...
+    validations:
+      required: true
+
+  - type: input
+    id: trace
+    attributes:
+      label: Langfuse trace URL (if applicable)
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Web app
+        - Agent loop
+        - Retrieval
+        - Indexer
+        - Evals
+        - Infrastructure
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / output
+      render: shell

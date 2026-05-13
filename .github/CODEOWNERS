@@ -1,0 +1,14 @@
+# CODEOWNERS — who must review what
+# https://docs.github.com/en/repositories/managing-your-repositories-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner — the project author
+* @rohanps630
+
+# Protected paths: agent core requires explicit author review
+/packages/agent/src/loop.ts          @rohanps630
+/packages/agent/src/prompts/         @rohanps630
+/packages/agent/src/retrieval/       @rohanps630
+
+# Architecture decisions
+/docs/adr/                           @rohanps630
+/AGENTS.md                           @rohanps630

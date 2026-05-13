@@ -1,0 +1,94 @@
+name: Evals
+
+on:
+  push:
+    branches: ["eval/**"]
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/agent/**"
+      - "evals/**"
+      - "apps/indexer/src/evals/**"
+  workflow_dispatch:
+    inputs:
+      dataset:
+        description: "Dataset version (e.g. v1)"
+        required: true
+        default: "v1"
+
+jobs:
+  run-evals:
+    name: Run eval harness
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: apps/indexer
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run evals
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          DATABASE_URL: ${{ secrets.EVAL_DATABASE_URL }}
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
+        run: |
+          uv run python -m evals.cli run \
+            --dataset "${{ inputs.dataset || 'v1' }}" \
+            --agent-version "${{ github.sha }}" \
+            --output ../../evals/results/${{ github.sha }}
+
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-${{ github.sha }}
+          path: evals/results/${{ github.sha }}/
+          retention-days: 30
+
+      - name: Post results to PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = `evals/results/${{ github.sha }}/summary.json`;
+            if (!fs.existsSync(path)) {
+              core.setFailed("No summary.json produced");
+              return;
+            }
+            const summary = JSON.parse(fs.readFileSync(path, 'utf8'));
+            const body = `## Eval Results
+
+            | Metric | Value | Δ vs main |
+            |---|---|---|
+            | Judge score | ${summary.judge_score.toFixed(3)} | ${summary.delta?.judge_score ?? "—"} |
+            | Deterministic | ${summary.deterministic_score.toFixed(3)} | ${summary.delta?.deterministic_score ?? "—"} |
+            | False positives | ${summary.false_positives} | ${summary.delta?.false_positives ?? "—"} |
+            | P95 latency | ${summary.p95_latency_ms}ms | ${summary.delta?.p95_latency_ms ?? "—"} |
+            | Cost per review | $${summary.cost_per_review.toFixed(4)} | ${summary.delta?.cost_per_review ?? "—"} |
+
+            Verdict: **${summary.verdict}**
+
+            [Full trace on Braintrust](${summary.braintrust_url ?? "#"})`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body
+            });
