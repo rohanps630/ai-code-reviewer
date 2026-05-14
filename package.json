@@ -10,17 +10,18 @@
   "packageManager": "pnpm@9.15.0",
   "scripts": {
     "build": "turbo run build",
+    "build:packages": "tsc --build",
     "dev": "turbo run dev",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "clean": "tsc --build --clean && turbo run clean && rm -rf node_modules",
     "test:e2e": "turbo run test:e2e",
     "db:generate": "pnpm --filter @acr/db generate",
     "db:migrate": "pnpm --filter @acr/db migrate",
     "db:studio": "pnpm --filter @acr/db studio",
-    "clean": "turbo run clean && rm -rf node_modules",
     "prepare": "lefthook install"
   },
   "devDependencies": {

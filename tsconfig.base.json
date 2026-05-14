@@ -26,8 +26,7 @@
 
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true,
-    "noEmit": true
+    "sourceMap": true
   },
   "exclude": ["node_modules", "dist", ".next", ".turbo", "coverage"]
 }

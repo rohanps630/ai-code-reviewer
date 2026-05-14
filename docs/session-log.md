@@ -271,10 +271,8 @@ Packages created in Phase 1:
   Settings model.
 
 Proposed Phase 2 task breakdown (`RAG done right`):
-1. **ADR-002 + project-references migration** — write the ADR
-   and convert workspaces to `composite: true` + `references`
-   so cross-package code shares a single emitted graph; drop
-   the webpack `extensionAlias` hack.
+1. ~~**ADR-002 + project-references migration**~~ — **done**
+   immediately after Phase 1 close (see entry below).
 2. **Schema for `repos`, `documents`, `chunks`** — Drizzle
    tables + migration including pgvector HNSW index on the
    `chunks.embedding` column.
@@ -296,3 +294,42 @@ Proposed Phase 2 task breakdown (`RAG done right`):
 9. **Retrieval recall fixture + smoke benchmark** — tiny
    golden set so Phase 4 has something to anchor on.
 
+
+
+## Phase 2 prep — TypeScript project references — done
+
+Picked up the deferred TODO from HANDOFF § 9.5 / repo-root `TODO`
+immediately after Phase 1 closed.
+
+- ADR-002 written at `docs/adr/002-typescript-project-references.md`
+  covering context (rootDir conflict + webpack `.js` workaround +
+  Phase 3 expansion risk), the decision, consequences, and four
+  rejected alternatives.
+- All three packages (`@acr/shared`, `@acr/db`, `@acr/agent`) now
+  carry `composite: true`, real `tsc --build` emit to `dist/`
+  (`.js` + `.d.ts` + sourcemaps + declaration maps), and
+  package.json `exports` pointing to the compiled artifacts. Test
+  files are excluded from emit.
+- Project graph wired via `references` arrays: `@acr/db` →
+  `@acr/shared`; `apps/web` → all three. A new root `tsconfig.json`
+  enumerates the packages so `pnpm build:packages` walks the graph
+  with one `tsc --build`.
+- `tsconfig.base.json` dropped `noEmit: true` so packages can
+  actually emit. `apps/web` keeps `noEmit: true` in its own
+  tsconfig because Next handles emission.
+- `apps/web/next.config.ts` dropped the `webpack.extensionAlias`
+  workaround and `transpilePackages` — Next now resolves through
+  the packages' compiled dist like any normal npm package.
+- `packages/db/src/client.ts` migrated to import `serverEnv` from
+  `@acr/shared/env`, deleting the duplicate `process.env` read
+  that was the original symptom of the rootDir conflict.
+- CI workflow gained a `Build packages` step in each TS job so the
+  compiled artifacts exist before lint/typecheck/test/web-build
+  run.
+- All gates green on a clean build: `pnpm install --frozen-lockfile`,
+  `pnpm build:packages` (3 packages emit), `pnpm lint` (75 files,
+  no issues), `pnpm typecheck` (7 tasks via turbo), `pnpm test`
+  (29/29 across 4 packages), `pnpm --filter @acr/web build` (8
+  routes, no warnings), dev server boots and serves `/`,
+  `/reviews`, `/reviews/new` at 200 with no `transpilePackages`
+  declared.

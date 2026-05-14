@@ -29,6 +29,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build packages
+        run: pnpm build:packages
+
       - name: Lint
         run: pnpm lint
 
@@ -53,6 +56,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build packages
+        run: pnpm build:packages
+
       - name: Test
         run: pnpm test
 
@@ -74,7 +80,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
+      - name: Build packages
+        run: pnpm build:packages
+
+      - name: Build web
         run: pnpm --filter @acr/web build
         env:
           # Skip strict env validation during build worker page-data
