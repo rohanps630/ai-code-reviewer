@@ -197,3 +197,20 @@ After each task: append entry here, commit with Conventional Commits.
   Zod errors on invalid body. Full stream requires a real DB
   (Supabase), which Phase 1 deploy will provide.
 
+### Task 9 — apps/indexer Python scaffold — done
+
+- `apps/indexer/pyproject.toml` declares Python ≥3.12, deps
+  `pydantic` + `pydantic-settings`, dev deps `ruff` + `pytest`,
+  hatchling build backend, Ruff config (line-length 100,
+  target py312, ruleset E/F/I/B/UP/N/S, S101 disabled in tests).
+- Three packages under `src/`:
+  - `indexer/`: stub `cli.py` printing "not implemented (Phase 2)"
+  - `evals/`: stub `cli.py` printing "not implemented (Phase 4)"
+  - `shared/`: `config.py` exposing a frozen Pydantic `Settings`
+    model that reads DB URL + LLM keys from `.env`.
+- `tests/test_config.py` covers default loading and the
+  frozen-model guarantee.
+- Gates green: `uv sync` resolves cleanly,
+  `uv run ruff check .` passes, `uv run ruff format --check .`
+  passes, `uv run pytest` reports 2/2.
+

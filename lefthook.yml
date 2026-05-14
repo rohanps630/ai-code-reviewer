@@ -9,8 +9,9 @@ pre-commit:
       run: pnpm biome check --write --no-errors-on-unmatched {staged_files}
       stage_fixed: true
     ruff:
-      glob: "*.py"
-      run: cd apps/indexer && uv run ruff check --fix {staged_files} && uv run ruff format {staged_files}
+      glob: "apps/indexer/**/*.py"
+      root: apps/indexer
+      run: uv run ruff check --fix {staged_files} && uv run ruff format {staged_files}
       stage_fixed: true
     typecheck:
       glob: "*.{ts,tsx}"
