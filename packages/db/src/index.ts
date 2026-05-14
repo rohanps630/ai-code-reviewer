@@ -18,3 +18,8 @@ export { reviews } from "./schema/index.js";
 
 // Inferred types — use these in application code, not raw Drizzle types
 export type { Review, NewReview } from "./types.js";
+
+// Query helpers — re-exported so consumers use the same drizzle-orm
+// instance that @acr/db's schema definitions were built against, avoiding
+// dual-instance type incompatibility under pnpm peer-dep splitting.
+export { eq, and, or, desc, asc, sql } from "drizzle-orm";

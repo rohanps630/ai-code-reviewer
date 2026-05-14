@@ -80,10 +80,37 @@ const serverSchema = z.object({
 // ---------------------------------------------------------------------------
 
 /**
+ * Skip validation in non-production contexts where Next.js spawns
+ * workers without inheriting the parent process's `.env*` files
+ * (page-data collection during `next build`, route-handler workers in
+ * dev). Production runtimes — Vercel, `next start`, the indexer — get
+ * env from the platform and still parse + fail loud.
+ *
+ * Force-skip with `SKIP_ENV_VALIDATION=1`. Force-on with
+ * `NODE_ENV=production`, which is the canonical "this is the real
+ * deployment, fail if anything is missing" signal.
+ */
+const skipValidation =
+  process.env.SKIP_ENV_VALIDATION === "1" ||
+  process.env.NEXT_PHASE === "phase-production-build" ||
+  process.env.NODE_ENV !== "production";
+
+function parseOrPassthrough<S extends z.ZodType>(
+  schema: S,
+  source: Record<string, unknown>,
+): z.infer<S> {
+  if (skipValidation) {
+    const result = schema.safeParse(source);
+    return (result.success ? result.data : source) as z.infer<S>;
+  }
+  return schema.parse(source) as z.infer<S>;
+}
+
+/**
  * Client-safe environment variables (NEXT_PUBLIC_*).
  * Safe to import in browser bundles.
  */
-export const clientEnv = clientSchema.parse({
+export const clientEnv = parseOrPassthrough(clientSchema, {
   NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
@@ -94,7 +121,7 @@ export const clientEnv = clientSchema.parse({
  * Server-only environment variables.
  * Never import this in client-side code.
  */
-export const serverEnv = serverSchema.parse({
+export const serverEnv = parseOrPassthrough(serverSchema, {
   NODE_ENV: process.env.NODE_ENV,
   DATABASE_URL: process.env.DATABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,

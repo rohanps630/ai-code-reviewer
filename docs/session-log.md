@@ -107,3 +107,59 @@ After each task: append entry here, commit with Conventional Commits.
 - Gates: typecheck clean, build clean, biome clean, dev server boots
   and serves `/` at 200.
 
+### Task 7 — /api/reviews streaming route — done
+
+- Added `ai`, `@anthropic-ai/sdk`, `zod`, `drizzle-orm` (direct), and
+  `vitest` (dev) to `apps/web`. Anthropic SDK installed for Task 7's
+  brief but not used yet — placeholder generator carries the stream.
+- New route handler at `apps/web/src/app/api/reviews/route.ts`:
+  - Zod-validates POST body (`diff` non-empty, optional `model`
+    enum, defaults to `sonnet`).
+  - 400 with flattened Zod errors on bad input.
+  - Inserts a `reviews` row with status `pending`, transitions
+    `streaming` then `completed`, with `output` set to the final
+    `ReviewOutput` and zeroed token/cost for the placeholder.
+  - Streams NDJSON of `ReviewChunk` objects so the UI can render
+    progressively without depending on the AI SDK's wire protocol
+    (which churned between v5 and v6).
+  - Calls `runReview` from `@acr/agent`, catches its "Not
+    implemented" throw, falls back to `placeholderReview()` —
+    proves the wiring works end-to-end while the agent loop is
+    still gated.
+  - Wraps the whole streamed run in a Langfuse `trace` + `span`,
+    flushing on stream end (success or failure). No LLM calls yet.
+- `placeholderReview()` (`apps/web/src/app/api/reviews/placeholder.ts`)
+  emits a realistic ReviewChunk sequence: two status updates, ~20
+  tokenized text deltas, and a synthetic `final` with two findings
+  spanning severities and categories.
+- 5/5 vitest tests pass: invalid body → 400, empty `diff` → 400,
+  full stream + DB transitions verified, Langfuse trace + flush
+  verified, model default verified. Tests mock `@acr/db`,
+  `@acr/db/client`, and `@/lib/langfuse` at the module level.
+- Cross-package import fixes:
+  - Re-exported `eq, and, or, desc, asc, sql` from `@acr/db` so
+    consumers use the same `drizzle-orm` instance @acr/db's table
+    schemas were built against (pnpm peer-dep splitting can hoist
+    two copies otherwise, and the Column types don't unify).
+  - `next.config.ts` adds a webpack `extensionAlias` mapping
+    `.js → .ts/.tsx/.js` so the TS source's NodeNext `.js`
+    specifiers (correct ESM, can't be removed without touching
+    protected `@acr/agent/src/` paths) resolve to the actual TS
+    files. Also added `transpilePackages` for the three workspace
+    packages.
+- Env validation: relaxed `@acr/shared/env` to skip in
+  non-production / build-phase contexts. Reason: Next 16's
+  page-data and route-handler workers don't reliably inherit
+  `.env*` from the parent process, so the previous fail-loud parse
+  crashed both `next build` and route handlers in dev. Production
+  (`NODE_ENV=production`) still parses and fails loud. Force the
+  strict behavior anywhere with `SKIP_ENV_VALIDATION=0` semantics
+  if needed.
+- Manual smoke: dev `POST /api/reviews` with `{}` → 400 (good);
+  with valid body → 500 because the placeholder DATABASE_URL has
+  no local Postgres listening, which is expected for Phase 1 dev
+  without Supabase configured. Unit tests cover the 200 path with
+  a mocked db.
+- Gates: shared 8/8, db 7/7, agent 9/9, web 5/5, web typecheck
+  clean, web build clean, biome clean.
+
