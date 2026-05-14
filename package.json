@@ -9,6 +9,7 @@
   },
   "packageManager": "pnpm@9.15.0",
   "scripts": {
+    "cli": "node scripts/cli.mjs",
     "build": "turbo run build",
     "build:packages": "tsc --build",
     "dev": "turbo run dev",

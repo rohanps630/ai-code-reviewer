@@ -78,6 +78,16 @@
   },
   "overrides": [
     {
+      "include": ["scripts/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
+    },
+    {
       "include": ["apps/web/src/components/ui/**"],
       "linter": {
         "rules": {
