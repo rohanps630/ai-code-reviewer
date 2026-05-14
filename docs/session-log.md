@@ -213,4 +213,86 @@ After each task: append entry here, commit with Conventional Commits.
 - Gates green: `uv sync` resolves cleanly,
   `uv run ruff check .` passes, `uv run ruff format --check .`
   passes, `uv run pytest` reports 2/2.
+- Pre-commit hook: lefthook ruff command moved to `root:
+  apps/indexer` so staged-file paths resolve correctly when ruff
+  runs there. Previously it E902'd because absolute paths were
+  being interpreted relative to the indexer subdir.
+
+### Task 10 — CI green — done
+
+- All local quality gates green on a clean run:
+  - `pnpm install --frozen-lockfile` — clean
+  - `pnpm lint` (biome check .) — 74 files, no issues
+  - `pnpm typecheck` (turbo across 4 packages) — clean
+  - `pnpm test` (turbo across 4 packages) — 29/29:
+    shared 8 + db 7 + agent 9 + web 5
+  - `pnpm --filter @acr/web build` — 8 routes
+  - `uv run ruff check .`, `uv run ruff format --check .`,
+    `uv run pytest` (apps/indexer) — clean, 2/2
+  - `gitleaks detect` — no leaks across full history
+- Added a `build-web` job to `.github/workflows/ci.yml` so the
+  Next.js build is exercised on every push/PR. Sets
+  `SKIP_ENV_VALIDATION=1` because Vercel provides the real env
+  at deploy time — CI just needs to prove the bundle compiles.
+
+## Phase 1 — complete
+
+Ship criteria met (per `docs/roadmap.md` Phase 1):
+- ✅ Web app builds and renders four routes locally.
+- ✅ `/api/reviews` accepts a diff, validates with Zod, streams
+  a structured placeholder review back, and persists the row.
+- ✅ Reviews list + detail pages read directly from Postgres.
+- ✅ Sentry + Langfuse wired (env-gated, no traces yet).
+- ✅ Local CI checks green; GitHub Actions workflow updated.
+
+Deferred to Phase 2 prep (per the TODO + HANDOFF):
+- 🔧 Convert monorepo to TypeScript project references so
+  cross-package source can be imported without the
+  webpack `extensionAlias` workaround.
+- 🔧 Replace the env-validation passthrough with a properly
+  hoisted dotenv load via `@next/env` (currently blocked by
+  client-bundle 'fs' import) or split env into client + server
+  files.
+
+Packages created in Phase 1:
+- `packages/shared` — Zod env loader, shared types (`Result`,
+  `ReviewStatus`, `FindingSeverity`).
+- `packages/db` — Drizzle schema for `reviews`, migration with
+  pgvector pre-step, postgres-js client, re-exported drizzle
+  query helpers to avoid pnpm peer-dep splitting.
+- `packages/agent` — frozen public interface (`ReviewInput`,
+  `Finding`, `ReviewOutput`, `ReviewChunk`); `runReview` stub
+  throws `Not implemented` until Phase 3.
+- `apps/web` — Next.js 15 + Tailwind 4 + shadcn/ui;
+  `/api/reviews` streaming route with Langfuse-wrapped span;
+  paste-diff UI + list + detail; Sentry + global-error wired.
+- `apps/indexer` — Python 3.12 skeleton with `indexer/`,
+  `evals/`, `shared/` packages; stub CLIs; frozen Pydantic
+  Settings model.
+
+Proposed Phase 2 task breakdown (`RAG done right`):
+1. **ADR-002 + project-references migration** — write the ADR
+   and convert workspaces to `composite: true` + `references`
+   so cross-package code shares a single emitted graph; drop
+   the webpack `extensionAlias` hack.
+2. **Schema for `repos`, `documents`, `chunks`** — Drizzle
+   tables + migration including pgvector HNSW index on the
+   `chunks.embedding` column.
+3. **Python chunking pipeline** in `apps/indexer/indexer/` —
+   tree-sitter per-language grammars, AST-aware chunk
+   selection, Pydantic models for the chunk row.
+4. **Voyage embeddings adapter** — batched `voyage-code-3`
+   calls, retry/backoff, write through to `chunks.embedding`.
+5. **Contextual retrieval prefix generator** — short Claude
+   call per chunk to add the "what is this chunk?" prefix
+   (Anthropic's pattern); cache by content hash.
+6. **Hybrid retrieval in `packages/agent/src/retrieval/`** —
+   BM25 (Postgres FTS) + vector + reciprocal rank fusion.
+7. **Cohere `rerank-3` integration** — final reranker over
+   the top 30 hits, take top 10.
+8. **Replace placeholder in `/api/reviews`** with a real
+   retrieval pass — still no agent loop yet, just retrieve
+   context and stitch it into a single Claude call.
+9. **Retrieval recall fixture + smoke benchmark** — tiny
+   golden set so Phase 4 has something to anchor on.
 

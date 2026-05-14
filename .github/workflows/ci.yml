@@ -56,6 +56,31 @@ jobs:
       - name: Test
         run: pnpm test
 
+  build-web:
+    name: Build web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm --filter @acr/web build
+        env:
+          # Skip strict env validation during build worker page-data
+          # collection. Real deploy reads env from Vercel.
+          SKIP_ENV_VALIDATION: "1"
+
   test-python:
     name: Python tests
     runs-on: ubuntu-latest
