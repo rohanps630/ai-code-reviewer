@@ -107,7 +107,9 @@
         "**/error.tsx",
         "**/not-found.tsx",
         "**/template.tsx",
-        "**/instrumentation.ts"
+        "**/global-error.tsx",
+        "**/instrumentation.ts",
+        "**/instrumentation-client.ts"
       ],
       "linter": {
         "rules": {

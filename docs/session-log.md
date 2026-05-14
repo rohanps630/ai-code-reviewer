@@ -76,3 +76,34 @@ After each task: append entry here, commit with Conventional Commits.
   gitignored.
 - Pre-commit hook: gitleaks was already installed via brew (`8.30.1`); no
   changes needed to `lefthook.yml`.
+
+### Task 6 — env loader + Sentry + Langfuse wiring — done
+
+- Added `@sentry/nextjs` (10.53.1) and `langfuse` (3.38.20) to
+  `apps/web/package.json`. Both env-driven; no calls traced yet.
+- Sentry runtime config split per Next 15+ convention:
+  - `sentry.server.config.ts` and `sentry.edge.config.ts` (loaded by
+    `instrumentation.ts` based on `NEXT_RUNTIME`)
+  - `instrumentation-client.ts` for browser init (Sentry 10 pattern,
+    replaces the old `sentry.client.config.ts`)
+  - Each init is gated on the relevant DSN env being present so missing
+    secrets don't crash boot during dev.
+- `instrumentation.ts` now also re-exports `Sentry.captureRequestError`
+  and `instrumentation-client.ts` exports `onRouterTransitionStart` so
+  Sentry can hook Next's request and router signals.
+- `apps/web/src/app/global-error.tsx` added so unhandled rendering
+  errors are reported (was previously a Sentry warning at boot).
+- `next.config.ts` wraps the export in `withSentryConfig` with
+  `tunnelRoute: "/monitoring"` so client beacons dodge ad blockers.
+  Migrated deprecated `disableLogger` / `reactComponentAnnotation`
+  options to the new `webpack.*` nested form.
+- `apps/web/src/lib/langfuse.ts` exports a lazy `getLangfuse()`
+  singleton — returns a client when keys are set, `null` otherwise.
+  Phase 1 doesn't actually trace yet (Task 7 will).
+- All env vars (Sentry, Langfuse) were already in the
+  `packages/shared/src/env.ts` Zod schema. No additions needed.
+- Added `global-error.tsx` and `instrumentation-client.ts` to
+  biome.json's `noDefaultExport` exception list.
+- Gates: typecheck clean, build clean, biome clean, dev server boots
+  and serves `/` at 200.
+
