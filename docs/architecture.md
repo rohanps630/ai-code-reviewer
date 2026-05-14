@@ -43,6 +43,50 @@ ai-code-reviewer/
 └── AGENTS.md               Source of truth for AI coding tools
 ```
 
+## `apps/web` layout
+
+```
+apps/web/
+├── src/
+│   ├── app/                    # Next.js App Router
+│   │   ├── (marketing)/        # Public pages
+│   │   ├── (app)/              # Authed pages
+│   │   │   ├── repos/
+│   │   │   ├── reviews/
+│   │   │   └── settings/
+│   │   ├── api/
+│   │   │   ├── reviews/route.ts
+│   │   │   └── webhooks/github/route.ts
+│   │   └── layout.tsx
+│   ├── components/
+│   │   ├── ui/                 # shadcn primitives (auto-generated)
+│   │   └── features/           # Domain components (your code)
+│   ├── lib/
+│   │   ├── auth.ts
+│   │   └── env.ts              # Re-exports from packages/shared
+│   └── styles/
+└── public/
+```
+
+## `apps/indexer` layout
+
+```
+apps/indexer/
+├── src/
+│   ├── indexer/                # Repo → chunks → embeddings → Postgres
+│   │   ├── cli.py
+│   │   ├── chunking.py
+│   │   ├── embeddings.py
+│   │   └── pipeline.py
+│   ├── evals/                  # Golden dataset runner
+│   │   ├── cli.py
+│   │   ├── judge.py
+│   │   └── scorers.py
+│   └── shared/                 # Pydantic models, DB client, config
+├── tests/
+└── pyproject.toml
+```
+
 ## The agent package
 
 `packages/agent/` is the project's intellectual core. It's hand-written, learning-focused code. AI tools should not modify it without explicit human direction.

@@ -103,7 +103,23 @@ uv run python -m evals.cli run --dataset v1
 
 ## Working with AI coding tools
 
-This repo is set up to work with any AI coding tool. The conventions in `AGENTS.md` are read by Claude Code, OpenAI Codex, Cursor, Aider, and Kiro (via `.kiro/steering/`). Drop in any tool and it'll follow the same rules.
+This repo is set up so every AI coding tool reads the same conventions
+from one place: **[`AGENTS.md`](./AGENTS.md)** at the repo root. The
+tool-specific files (`CLAUDE.md`, `.cursorrules`, `.kiro/steering/*.md`)
+are thin shims that re-point to it — none of them carry unique guidance.
+
+| Tool | Discovery file → |
+|---|---|
+| Claude Code | `CLAUDE.md` → `@AGENTS.md` |
+| OpenAI Codex CLI | `AGENTS.md` (native) |
+| Cursor | `.cursorrules` → AGENTS.md |
+| Kiro | `.kiro/steering/*.md` → `#[[file:AGENTS.md]]` |
+| Aider / others | Read `AGENTS.md` directly |
+
+To add support for another agent, create its expected file at its
+expected location, point it at `AGENTS.md`, and add a row to the table
+in `AGENTS.md` § 9. See "Agent context — single source of truth" there
+for the full policy.
 
 ## License
 

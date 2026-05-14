@@ -177,6 +177,34 @@ Types: `feat`, `fix`, `refactor`, `chore`, `docs`, `test`, `perf`, `eval`.
 - `main` — protected, deployable
 - `feat/<name>`, `fix/<name>`, `chore/<name>`, `eval/<name>`
 
+### Imports
+- Absolute imports via `@/` alias inside an app.
+- Cross-package imports via the package name (`@acr/agent`, `@acr/db`, `@acr/shared`).
+- No deep relative paths (`../../../`) — set up a path alias instead.
+
+### Where to put new code
+
+| What you're adding | Where it goes |
+|---|---|
+| New API route | `apps/web/src/app/api/<name>/route.ts` |
+| New page | `apps/web/src/app/(app)/<name>/page.tsx` |
+| New UI component (generic) | `apps/web/src/components/ui/` |
+| New UI component (domain) | `apps/web/src/components/features/<domain>/` |
+| New DB table | `packages/db/src/schema/<name>.ts` + migration |
+| New shared type | `packages/shared/src/types.ts` |
+| New env var | `packages/shared/src/env.ts` Zod schema **and** `.env.example` |
+| New Python indexer module | `apps/indexer/src/indexer/<name>.py` |
+| New eval scorer | `apps/indexer/src/evals/scorers/<name>.py` |
+| New agent tool | **STOP. Ask the human first** (see § 7). |
+| New prompt version | **STOP. Ask the human first** (see § 7). |
+| New ADR | `docs/adr/NNN-<slug>.md` (next number) |
+| New top-level command | Add to `scripts/cli.mjs` `tree` **in the same commit** as the script |
+
+### Version policy
+- Pin to the major versions in § 3 for the full project duration.
+- Bump minors/patches freely.
+- Major version bumps require an ADR in `docs/adr/`.
+
 ### Interactive CLI
 
 `scripts/cli.mjs` (run via `pnpm cli`) is a hand-maintained Node CLI
@@ -242,6 +270,42 @@ These will be rejected in review every time. No exceptions.
 
 ---
 
-## 9. When in doubt
+## 9. Agent context — single source of truth
+
+**This file (`AGENTS.md`) is the canonical project context for every AI
+coding tool.** Claude Code, Codex CLI, Cursor, Aider, Kiro, and any
+future agent all read from here. The tool-specific files in this repo
+are deliberately thin shims that re-point to `AGENTS.md` + `docs/`:
+
+| Tool | Discovery file | What's in it |
+|---|---|---|
+| Claude Code | `CLAUDE.md` | `@AGENTS.md` (import) |
+| OpenAI Codex CLI | `AGENTS.md` | Reads this file natively |
+| Cursor | `.cursorrules` | One paragraph pointing here |
+| Kiro | `.kiro/steering/*.md` | Each file has `inclusion: always` + `#[[file:...]]` imports of `AGENTS.md` and `docs/architecture.md` |
+
+**Rules for keeping this honest:**
+
+1. Project conventions, stack choices, "never do" rules, folder layout,
+   commit format, prompt-versioning policy → **always edit `AGENTS.md`**,
+   never the tool-specific shims.
+2. Deeper architecture detail → `docs/architecture.md`. Coding style
+   → `docs/coding-style.md`. ADRs → `docs/adr/`.
+3. The tool-specific files (`CLAUDE.md`, `.cursorrules`, `.kiro/steering/*`)
+   exist only so each agent's discovery mechanism resolves to the
+   canonical content. Do not put unique guidance in them — anything an
+   agent needs to know should live in `AGENTS.md` so every other agent
+   gets it too.
+4. Adding support for a new agent? Create the tool's expected file at
+   its expected location, make it a thin pointer to `AGENTS.md`, and
+   record the entry in the table above.
+
+If the answer to "should this rule live in `AGENTS.md` or in
+`.kiro/steering/product.md`?" is ever ambiguous, the answer is
+`AGENTS.md`.
+
+---
+
+## 10. When in doubt
 
 Stop and ask the human. Do not guess at architecture, do not write code that violates this document's structure, do not introduce frameworks not listed above. A clarifying question is always cheaper than a refactor.
