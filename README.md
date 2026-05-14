@@ -27,6 +27,7 @@ apps/indexer     → Python: indexing + evals
 packages/agent   → Hand-written agent loop, tools, prompts, retrieval
 packages/db      → Drizzle schemas
 packages/shared  → Cross-app types
+scripts/cli.mjs  → Interactive task menu (pnpm cli)
 ```
 
 ## Stack
@@ -67,6 +68,21 @@ pnpm db:migrate
 # Start web app
 pnpm dev
 ```
+
+### Daily workflow
+
+For routine tasks (dev server, build, test, lint, db, indexer, git),
+use the interactive menu — it's faster than remembering script names
+and confirms before anything destructive:
+
+```bash
+pnpm cli
+```
+
+The menu lives in [`scripts/cli.mjs`](./scripts/cli.mjs) and is
+maintained alongside the code: any new top-level command should be
+added to the menu in the same commit (see AGENTS.md § 6 → Interactive
+CLI).
 
 ### Run an eval
 

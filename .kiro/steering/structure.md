@@ -30,6 +30,8 @@ ai-code-reviewer/
 ├── .kiro/
 │   ├── steering/               # This folder
 │   └── specs/                  # Spec-driven dev specs
+├── scripts/
+│   └── cli.mjs                 # Interactive task menu (pnpm cli)
 ├── .github/
 │   ├── workflows/
 │   └── PULL_REQUEST_TEMPLATE.md
@@ -112,6 +114,7 @@ packages/agent/
 | New agent tool | **STOP. Ask the human first.** |
 | New prompt version | **STOP. Ask the human first.** |
 | New ADR | `docs/adr/NNN-<slug>.md` (next number) |
+| New top-level command | `scripts/cli.mjs` `tree` entry — in the same commit as the script |
 
 ## Naming
 

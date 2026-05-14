@@ -36,6 +36,7 @@ ai-code-reviewer/
 │   ├── datasets/           Golden datasets (JSONL)
 │   └── results/            Eval outputs (summaries committed, raw gitignored)
 ├── docs/                   This folder
+├── scripts/                Repo-level tooling (interactive CLI, etc.)
 ├── .claude/commands/       Claude Code slash commands
 ├── .kiro/steering/         Kiro steering files
 ├── .github/                CI workflows + templates
@@ -178,6 +179,25 @@ Phase 5 adds a small router that picks model based on PR signal:
 - **Complex** (large diff, multiple files, public API changes) → `claude-opus-4-7`
 
 Routing logic is rule-based in `packages/agent/src/loop.ts`. No ML classifier needed at this scale.
+
+## Developer tooling — `scripts/cli.mjs`
+
+A zero-dep Node 22 interactive CLI lives at `scripts/cli.mjs` (run with
+`pnpm cli`). It surfaces every routine task — dev server, build,
+test, lint, typecheck, DB migrations, Drizzle Studio, indexer, git —
+behind a numbered, color-coded menu. Each item is one of three shapes
+(submenu, shell command, or inline action) and the file is intentionally
+small so adding a new entry is a one-object-literal change.
+
+The CLI is a maintained part of the codebase, not a generated artifact.
+Any time we add a top-level `package.json` script, a Python task that
+humans run, or a destructive operation, we add the matching entry to
+the `tree` constant in the same commit. Destructive actions
+(`clean`, `db migrate`, `git push`) get a `confirm:` warning; long-
+running tasks (dev server, Drizzle Studio) get `longRunning: true`
+which prints a Ctrl-C hint and returns to the menu when the child
+exits. The same rule lives in `AGENTS.md` § 6 → "Interactive CLI" and
+§ 7's never-do list.
 
 ## Deployment
 

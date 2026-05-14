@@ -89,6 +89,7 @@ ai-code-reviewer/
 │   ├── prompts.md              # Prompt change log
 │   ├── evals.md
 │   └── adr/                    # Architecture decision records
+├── scripts/                    # Repo-level tooling (interactive CLI, etc.)
 ├── .claude/commands/           # Claude Code slash commands
 ├── .kiro/steering/             # Kiro steering files
 └── AGENTS.md                   # ← this file (source of truth)
@@ -104,6 +105,9 @@ Full architecture details in `docs/architecture.md`.
 # Setup
 pnpm install                    # Install all JS deps
 cd apps/indexer && uv sync      # Install Python deps
+
+# Interactive CLI — wraps everything below behind a numbered menu
+pnpm cli                        # Run all dev/build/test/db tasks from one menu
 
 # Development
 pnpm dev                        # Start web app
@@ -121,6 +125,13 @@ cd apps/indexer
 uv run python -m indexer.cli index <repo-url>
 uv run python -m evals.cli run --dataset v1
 ```
+
+The `pnpm cli` interactive menu (`scripts/cli.mjs`) is the preferred
+entry point for routine work — it wraps every command in this section
+plus the Git / Indexer flows. It's a tool we maintain, not a generated
+artifact. **When you add a new top-level command (script, workflow,
+common task), also add it to `scripts/cli.mjs`** so the menu stays a
+faithful index. See § 6 → "Interactive CLI".
 
 ---
 
@@ -166,6 +177,33 @@ Types: `feat`, `fix`, `refactor`, `chore`, `docs`, `test`, `perf`, `eval`.
 - `main` — protected, deployable
 - `feat/<name>`, `fix/<name>`, `chore/<name>`, `eval/<name>`
 
+### Interactive CLI
+
+`scripts/cli.mjs` (run via `pnpm cli`) is a hand-maintained Node CLI
+that surfaces every routine task — dev, build, test, lint, db, indexer,
+git — behind a numbered menu. It's zero-dep (Node 22+ stdlib only) and
+deliberately easy to extend.
+
+**Keep it in sync with the codebase.** Treat the CLI like any other
+piece of source — it has to be updated alongside the work it wraps:
+
+- Adding a new `package.json` script that humans will run? Add a
+  matching entry to the relevant submenu in `tree`.
+- Adding a new long-running task (dev server, watcher, studio)? Set
+  `longRunning: true` so the menu prints the Ctrl-C hint.
+- Adding a destructive task (clean, migrate, push, drop)? Set
+  `confirm: "<one-sentence warning>"` so the menu prompts for
+  confirmation.
+- Renaming or removing a task? Update or remove its menu entry in
+  the same commit.
+- New top-level workflow (e.g. eval runner in Phase 4)? Add a new
+  submenu rather than overloading an existing one.
+
+The header docstring in `scripts/cli.mjs` documents the three item
+shapes (`menu` / `run` / `action`) and every `run` option. Adding a
+new entry is a single object literal — don't refactor the surrounding
+machinery to fit a one-off command.
+
 ---
 
 ## 7. Never do
@@ -182,6 +220,7 @@ These will be rejected in review every time. No exceptions.
 - ❌ Never disable typecheck or lint to ship faster.
 - ❌ Never write code that bypasses Zod validation at API boundaries.
 - ❌ Never commit `.env*` files (other than `.env.example`).
+- ❌ Never let the `scripts/cli.mjs` menu fall out of sync with the actual scripts — add the entry in the same commit as the new command, don't defer it.
 
 ---
 
@@ -199,6 +238,7 @@ These will be rejected in review every time. No exceptions.
 | Shared types | `packages/shared/src/types.ts` |
 | Env validation | `packages/shared/src/env.ts` |
 | ADRs | `docs/adr/` |
+| Interactive task menu | `scripts/cli.mjs` (run with `pnpm cli`) |
 
 ---
 
