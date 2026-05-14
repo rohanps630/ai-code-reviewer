@@ -78,7 +78,37 @@
   },
   "overrides": [
     {
-      "include": ["apps/web/src/app/**/*.tsx", "apps/web/src/app/**/page.tsx", "apps/web/src/app/**/layout.tsx", "apps/web/src/app/**/route.ts"],
+      "include": ["apps/web/src/components/ui/**"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "noLabelWithoutControl": "off"
+          },
+          "style": {
+            "noDefaultExport": "off"
+          }
+        }
+      }
+    },
+    {
+      "include": [
+        "**/*.config.ts",
+        "**/*.config.mts",
+        "**/*.config.js",
+        "**/*.config.mjs",
+        "**/*.config.cjs",
+        "**/route.ts",
+        "**/route.tsx",
+        "**/page.ts",
+        "**/page.tsx",
+        "**/layout.ts",
+        "**/layout.tsx",
+        "**/loading.tsx",
+        "**/error.tsx",
+        "**/not-found.tsx",
+        "**/template.tsx",
+        "**/instrumentation.ts"
+      ],
       "linter": {
         "rules": {
           "style": {

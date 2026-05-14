@@ -84,3 +84,5 @@ supabase/.temp/
 
 # Generated
 packages/db/src/migrations/meta/_journal.json.bak
+
+temp/
