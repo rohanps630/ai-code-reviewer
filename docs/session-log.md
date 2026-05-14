@@ -163,3 +163,37 @@ After each task: append entry here, commit with Conventional Commits.
 - Gates: shared 8/8, db 7/7, agent 9/9, web 5/5, web typecheck
   clean, web build clean, biome clean.
 
+### Task 8 — minimal UI — done
+
+- `/reviews/new` (client) — paste-diff card, model select
+  (Haiku/Sonnet/Opus), submit. Custom `useReviewStream` hook in
+  `components/features/reviews/use-review-stream.ts` reads NDJSON
+  from `/api/reviews` via fetch + `getReader`, accumulates a
+  status ticker, text deltas (rendered through `react-markdown`),
+  and the final structured `ReviewOutput`. Submit button disabled
+  while streaming. Wrapped in `<Suspense>` so `useSearchParams` is
+  build-safe (Re-run on the detail page passes `?diff=&model=` so
+  the page can prefill).
+- `/reviews` (server) — lists last 50 reviews via Drizzle ordered
+  by `created_at desc`. Empty state when no rows; gracefully
+  renders an error message when the DB is unreachable (so Phase 1
+  dev without Supabase still renders rather than 500-ing).
+- `/reviews/[id]` (server) — full diff, structured output,
+  metadata, and a Re-run form that navigates to `/reviews/new`
+  with the prior diff + model preloaded.
+- New domain components under
+  `apps/web/src/components/features/reviews/`:
+  `ReviewCard` (list row with status badge),
+  `DiffViewer` (line-colored `<pre><code>`),
+  `FindingItem` (severity/category badges).
+- App nav gained a "New" link. The list-page CTA links into
+  `/reviews/new` via `buttonVariants()` (the shadcn `<Button>`
+  here is from `@base-ui/react` and doesn't support `asChild`).
+- Deps: added `react-markdown`. No auth, no user-scoping (Phase 1
+  is open access as the brief calls out).
+- Gates: shared 8/8, db 7/7, agent 9/9, web 5/5, typecheck clean,
+  build clean, biome clean. Dev smoke: `/`, `/reviews`,
+  `/reviews/new` all 200; `POST /api/reviews` returns 400 with
+  Zod errors on invalid body. Full stream requires a real DB
+  (Supabase), which Phase 1 deploy will provide.
+

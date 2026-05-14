@@ -13,6 +13,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <a href="/reviews" className="text-muted-foreground hover:text-foreground">
             Reviews
           </a>
+          <a href="/reviews/new" className="text-muted-foreground hover:text-foreground">
+            New
+          </a>
           <a href="/repos" className="text-muted-foreground hover:text-foreground">
             Repos
           </a>
