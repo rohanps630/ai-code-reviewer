@@ -183,27 +183,14 @@ Types: `feat`, `fix`, `refactor`, `chore`, `docs`, `test`, `perf`, `eval`.
 - No deep relative paths (`../../../`) — set up a path alias instead.
 
 ### Where to put new code
-
-| What you're adding | Where it goes |
-|---|---|
-| New API route | `apps/web/src/app/api/<name>/route.ts` |
-| New page | `apps/web/src/app/(app)/<name>/page.tsx` |
-| New UI component (generic) | `apps/web/src/components/ui/` |
-| New UI component (domain) | `apps/web/src/components/features/<domain>/` |
-| New DB table | `packages/db/src/schema/<name>.ts` + migration |
-| New shared type | `packages/shared/src/types.ts` |
-| New env var | `packages/shared/src/env.ts` Zod schema **and** `.env.example` |
-| New Python indexer module | `apps/indexer/src/indexer/<name>.py` |
-| New eval scorer | `apps/indexer/src/evals/scorers/<name>.py` |
-| New agent tool | **STOP. Ask the human first** (see § 7). |
-| New prompt version | **STOP. Ask the human first** (see § 7). |
-| New ADR | `docs/adr/NNN-<slug>.md` (next number) |
-| New top-level command | Add to `scripts/cli.mjs` `tree` **in the same commit** as the script |
+See the table in `docs/architecture.md` → "Where to put new code". Two
+hard rules carry over here: new agent tools and new prompt versions
+require an explicit human ask (§ 7).
 
 ### Version policy
-- Pin to the major versions in § 3 for the full project duration.
-- Bump minors/patches freely.
-- Major version bumps require an ADR in `docs/adr/`.
+Pin to the major versions in § 3. Minor/patch bumps are free; major
+bumps require an ADR in `docs/adr/`. Full text in
+`docs/architecture.md` → "Version policy".
 
 ### Interactive CLI
 
@@ -266,6 +253,8 @@ These will be rejected in review every time. No exceptions.
 | Shared types | `packages/shared/src/types.ts` |
 | Env validation | `packages/shared/src/env.ts` |
 | ADRs | `docs/adr/` |
+| Where to put new code | `docs/architecture.md` → "Where to put new code" |
+| Version policy | `docs/architecture.md` → "Version policy" |
 | Interactive task menu | `scripts/cli.mjs` (run with `pnpm cli`) |
 
 ---
