@@ -14,10 +14,19 @@
  */
 
 // Table definitions
-export { reviews } from "./schema/index.js";
+export { reviews, repos, documents, chunks } from "./schema/index.js";
 
 // Inferred types — use these in application code, not raw Drizzle types
-export type { Review, NewReview } from "./types.js";
+export type {
+  Review,
+  NewReview,
+  Repo,
+  NewRepo,
+  Document,
+  NewDocument,
+  Chunk,
+  NewChunk,
+} from "./types.js";
 
 // Query helpers — re-exported so consumers use the same drizzle-orm
 // instance that @acr/db's schema definitions were built against, avoiding

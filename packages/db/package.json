@@ -20,9 +20,9 @@
     "typecheck": "tsc --build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "generate": "drizzle-kit generate",
-    "migrate": "drizzle-kit migrate",
-    "studio": "drizzle-kit studio"
+    "generate": "tsc --build && drizzle-kit generate",
+    "migrate": "tsc --build && drizzle-kit migrate",
+    "studio": "tsc --build && drizzle-kit studio"
   },
   "dependencies": {
     "@acr/shared": "workspace:*",

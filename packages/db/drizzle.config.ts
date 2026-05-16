@@ -3,13 +3,17 @@ import { defineConfig } from "drizzle-kit";
 /**
  * Drizzle Kit configuration.
  *
- * - Schema: packages/db/src/schema/ (all *.ts files)
+ * - Schema:    packages/db/dist/schema/ (compiled JS, run `tsc --build` first;
+ *              the `generate` / `migrate` / `studio` scripts do this for you).
+ *              We can't point at TS source because drizzle-kit's loader
+ *              doesn't honor NodeNext-style `.js` specifiers in cross-file
+ *              imports between schema modules.
  * - Migrations: packages/db/src/migrations/
- * - Dialect: postgresql (Supabase Postgres 16+)
- * - strict: true — fail on ambiguous schema changes rather than guessing
+ * - Dialect:    postgresql (Supabase Postgres 16+)
+ * - strict:     true — fail on ambiguous schema changes rather than guessing
  */
 export default defineConfig({
-  schema: "./src/schema/reviews.ts",
+  schema: "./dist/schema/*.js",
   out: "./src/migrations",
   dialect: "postgresql",
   strict: true,
