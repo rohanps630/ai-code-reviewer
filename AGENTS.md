@@ -77,7 +77,7 @@ ai-code-reviewer/
 │   ├── web/                    # Next.js 15 app
 │   └── indexer/                # Python indexer + eval runner
 ├── packages/
-│   ├── agent/                  # HAND-WRITTEN: loop, tools, prompts, retrieval
+│   ├── agent/                  # PROTECTED: loop, tools, prompts, retrieval
 │   ├── db/                     # Drizzle schemas + migrations
 │   └── shared/                 # Types + env loader
 ├── evals/
@@ -225,7 +225,7 @@ machinery to fit a one-off command.
 
 These will be rejected in review every time. No exceptions.
 
-- ❌ **Never modify `packages/agent/src/loop.ts`, `prompts/`, or `retrieval/`** unless the human explicitly asks. These are hand-authored and are the project's learning core.
+- ❌ **Never modify `packages/agent/src/loop.ts`, `prompts/`, or `retrieval/`** unless the human explicitly asks. Treat them as owned by the human; if a task seems to need a change here, stop and surface it.
 - ❌ Never commit secrets or hardcode API keys.
 - ❌ Never edit a published prompt version in place — bump to next version.
 - ❌ Never write tests that assert on LLM output **content** directly. That's what evals are for. Mock LLMs only for shape/error tests.

@@ -48,7 +48,7 @@ Replace static retrieval with an agent loop. Model decides what to look up.
 
 - Tool/function-calling API contracts
 - Writing tool descriptions the model uses correctly
-- ReAct-style loop from scratch
+- ReAct-style loop implementation
 - Failure modes (infinite loops, hallucinated tools, error recovery)
 - Framework comparison (LangGraph, Anthropic Agent SDK)
 

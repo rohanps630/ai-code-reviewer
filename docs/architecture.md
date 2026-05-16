@@ -29,7 +29,7 @@ ai-code-reviewer/
 │   ├── web/                Next.js 15 app (UI + API + agent execution)
 │   └── indexer/            Python worker: indexing, evals
 ├── packages/
-│   ├── agent/              Hand-written: loop, tools, prompts, retrieval
+│   ├── agent/              Protected: loop, tools, prompts, retrieval
 │   ├── db/                 Drizzle schemas + migrations
 │   └── shared/             Cross-app types + env loader
 ├── evals/
@@ -114,7 +114,7 @@ apps/indexer/
 
 ## The agent package
 
-`packages/agent/` is the project's intellectual core. It's hand-written, learning-focused code. AI tools should not modify it without explicit human direction.
+`packages/agent/` holds the agent loop, tools, prompts, and retrieval — the parts that change most often as the product evolves and that we want a human to own end-to-end. AI tools should not modify it without explicit human direction (see AGENTS.md § 7).
 
 ```
 packages/agent/src/

@@ -2,7 +2,7 @@
   "name": "@acr/agent",
   "version": "0.0.1",
   "private": true,
-  "description": "Agent loop, tools, prompts, and retrieval for AI Code Reviewer (hand-written core — see AGENTS.md § 7)",
+  "description": "Agent loop, tools, prompts, and retrieval for AI Code Reviewer (protected paths — see AGENTS.md § 7)",
   "type": "module",
   "exports": {
     ".": {

@@ -5,7 +5,7 @@ argument-hint: <tool-name>
 
 # New agent tool: $ARGUMENTS
 
-⚠️ **Tool implementations under `packages/agent/src/tools/` are part of the protected hand-written core.** Do not write the actual logic. Your job here is to scaffold the file structure, types, and tests so the human can fill in the implementation.
+⚠️ **Tool implementations under `packages/agent/src/tools/` are protected (AGENTS.md § 7).** Do not write the actual logic. Your job here is to scaffold the file structure, types, and tests so the human can fill in the implementation.
 
 ## Steps
 
@@ -45,7 +45,7 @@ argument-hint: <tool-name>
 
 ## Don't
 
-- Don't implement `execute`. That's hand-written by the human.
+- Don't implement `execute`. The human owns that logic.
 - Don't modify `loop.ts`.
 - Don't modify any prompt files.
 - Don't write tests that mock the LLM.

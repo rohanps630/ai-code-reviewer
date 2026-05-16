@@ -13,7 +13,7 @@ An AI agent that reviews GitHub pull requests using code-aware retrieval and too
 ## What makes it interesting
 
 - **Code-aware retrieval**: AST-based chunking with tree-sitter, hybrid BM25 + vector search via pgvector, cross-encoder reranking
-- **Agentic loop**: Tool-using agent that searches code, reads files, finds references, runs tests — written from scratch, not LangChain-generated
+- **Agentic loop**: Tool-using agent that searches code, reads files, finds references, runs tests with a clean ReAct-style control loop
 - **Real evals**: Golden dataset of 50+ historical PRs from popular OSS repos, scored by LLM-as-judge plus deterministic checks
 - **Production concerns**: Prompt caching, semantic caching, model routing, prompt injection defense, full Langfuse tracing
 
@@ -24,7 +24,7 @@ See [`docs/architecture.md`](./docs/architecture.md) for the full stack, folder 
 ```
 apps/web         → Next.js 15 app
 apps/indexer     → Python: indexing + evals
-packages/agent   → Hand-written agent loop, tools, prompts, retrieval
+packages/agent   → Agent loop, tools, prompts, retrieval
 packages/db      → Drizzle schemas
 packages/shared  → Cross-app types
 scripts/cli.mjs  → Interactive task menu (pnpm cli)
