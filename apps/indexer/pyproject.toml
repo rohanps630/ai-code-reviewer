@@ -4,6 +4,7 @@ version = "0.0.1"
 description = "AI Code Reviewer — repo indexer + eval runner"
 requires-python = ">=3.12"
 dependencies = [
+    "anthropic>=0.40",
     "httpx>=0.28.1",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
