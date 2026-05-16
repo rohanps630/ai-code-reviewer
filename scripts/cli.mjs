@@ -312,6 +312,23 @@ const tree = {
       },
     },
     {
+      label: "Evals",
+      menu: {
+        title: "Evals",
+        items: [
+          {
+            label: "Retrieval recall benchmark (retrieval-v0)",
+            run: {
+              cmd: "pnpm",
+              args: ["bench:retrieval"],
+              confirm:
+                "Truncates the fixture repo's rows in chunks/documents/repos on the configured DATABASE_URL.",
+            },
+          },
+        ],
+      },
+    },
+    {
       label: "Indexer (Python)",
       menu: {
         title: "Indexer",

@@ -1,0 +1,218 @@
+{
+  "name": "retrieval-v0",
+  "version": "0.1.0",
+  "description": "Tiny hand-crafted fixture for the Phase 2.8 retrieval smoke benchmark. Chunks mimic a small auth/billing service so each query has obvious correct answers.",
+  "repo": {
+    "url": "https://example.invalid/acr/retrieval-v0",
+    "owner": "acr",
+    "name": "retrieval-v0-fixture",
+    "default_branch": "main"
+  },
+  "documents": [
+    {
+      "id": "doc-auth-login",
+      "path": "src/auth/login.ts",
+      "language": "typescript"
+    },
+    {
+      "id": "doc-auth-logout",
+      "path": "src/auth/logout.ts",
+      "language": "typescript"
+    },
+    {
+      "id": "doc-auth-session",
+      "path": "src/auth/session.ts",
+      "language": "typescript"
+    },
+    {
+      "id": "doc-billing-invoice",
+      "path": "src/billing/invoice.ts",
+      "language": "typescript"
+    },
+    {
+      "id": "doc-billing-stripe",
+      "path": "src/billing/stripe-webhook.ts",
+      "language": "typescript"
+    },
+    {
+      "id": "doc-utils-retry",
+      "path": "src/utils/retry.ts",
+      "language": "typescript"
+    },
+    {
+      "id": "doc-utils-logger",
+      "path": "src/utils/logger.ts",
+      "language": "typescript"
+    },
+    {
+      "id": "doc-config",
+      "path": "src/config.ts",
+      "language": "typescript"
+    }
+  ],
+  "chunks": [
+    {
+      "id": "chunk-login-handler",
+      "document_id": "doc-auth-login",
+      "chunk_index": 0,
+      "start_line": 12,
+      "end_line": 48,
+      "symbol_name": "loginHandler",
+      "symbol_kind": "function",
+      "content": "export async function loginHandler(req: Request): Promise<Response> {\n  const body = await req.json();\n  const parsed = LoginSchema.safeParse(body);\n  if (!parsed.success) return Response.json({ error: parsed.error }, { status: 400 });\n  const user = await findUserByEmail(parsed.data.email);\n  if (!user) return Response.json({ error: 'invalid credentials' }, { status: 401 });\n  const ok = await verifyPassword(parsed.data.password, user.passwordHash);\n  if (!ok) return Response.json({ error: 'invalid credentials' }, { status: 401 });\n  const session = await createSession(user.id);\n  return Response.json({ token: session.token });\n}",
+      "context": "Top-level login HTTP handler in src/auth/login.ts. Validates credentials with Zod, looks up the user, verifies the password, and issues a session token."
+    },
+    {
+      "id": "chunk-login-schema",
+      "document_id": "doc-auth-login",
+      "chunk_index": 1,
+      "start_line": 50,
+      "end_line": 56,
+      "symbol_name": "LoginSchema",
+      "symbol_kind": "block",
+      "content": "const LoginSchema = z.object({\n  email: z.string().email(),\n  password: z.string().min(8),\n});",
+      "context": "Zod schema for login request bodies in src/auth/login.ts. Requires a valid email and a password of at least 8 characters."
+    },
+    {
+      "id": "chunk-logout-handler",
+      "document_id": "doc-auth-logout",
+      "chunk_index": 0,
+      "start_line": 8,
+      "end_line": 24,
+      "symbol_name": "logoutHandler",
+      "symbol_kind": "function",
+      "content": "export async function logoutHandler(req: Request): Promise<Response> {\n  const token = extractBearerToken(req);\n  if (!token) return Response.json({ error: 'missing token' }, { status: 400 });\n  await revokeSession(token);\n  return Response.json({ ok: true });\n}",
+      "context": "Logout HTTP handler in src/auth/logout.ts. Pulls the bearer token off the request and revokes the matching session."
+    },
+    {
+      "id": "chunk-create-session",
+      "document_id": "doc-auth-session",
+      "chunk_index": 0,
+      "start_line": 14,
+      "end_line": 32,
+      "symbol_name": "createSession",
+      "symbol_kind": "function",
+      "content": "export async function createSession(userId: string): Promise<Session> {\n  const token = crypto.randomUUID();\n  const expiresAt = new Date(Date.now() + SESSION_TTL_MS);\n  await db.insert(sessions).values({ token, userId, expiresAt });\n  return { token, userId, expiresAt };\n}",
+      "context": "Session creation helper in src/auth/session.ts. Generates a UUID token, computes expiry from SESSION_TTL_MS, and writes a row to the sessions table."
+    },
+    {
+      "id": "chunk-revoke-session",
+      "document_id": "doc-auth-session",
+      "chunk_index": 1,
+      "start_line": 34,
+      "end_line": 42,
+      "symbol_name": "revokeSession",
+      "symbol_kind": "function",
+      "content": "export async function revokeSession(token: string): Promise<void> {\n  await db.delete(sessions).where(eq(sessions.token, token));\n}",
+      "context": "Session revocation in src/auth/session.ts. Deletes the row matching the supplied token."
+    },
+    {
+      "id": "chunk-verify-password",
+      "document_id": "doc-auth-session",
+      "chunk_index": 2,
+      "start_line": 44,
+      "end_line": 50,
+      "symbol_name": "verifyPassword",
+      "symbol_kind": "function",
+      "content": "export async function verifyPassword(plain: string, hash: string): Promise<boolean> {\n  return bcrypt.compare(plain, hash);\n}",
+      "context": "Password verification helper in src/auth/session.ts. Wraps bcrypt.compare against the user's stored hash."
+    },
+    {
+      "id": "chunk-create-invoice",
+      "document_id": "doc-billing-invoice",
+      "chunk_index": 0,
+      "start_line": 10,
+      "end_line": 36,
+      "symbol_name": "createInvoice",
+      "symbol_kind": "function",
+      "content": "export async function createInvoice(userId: string, items: InvoiceItem[]): Promise<Invoice> {\n  const totalCents = items.reduce((sum, i) => sum + i.priceCents * i.quantity, 0);\n  const invoice = await db.insert(invoices).values({ userId, totalCents, status: 'open' }).returning();\n  return invoice[0];\n}",
+      "context": "Invoice creation in src/billing/invoice.ts. Sums line items into total cents and writes an 'open' invoice row."
+    },
+    {
+      "id": "chunk-stripe-webhook",
+      "document_id": "doc-billing-stripe",
+      "chunk_index": 0,
+      "start_line": 12,
+      "end_line": 44,
+      "symbol_name": "stripeWebhookHandler",
+      "symbol_kind": "function",
+      "content": "export async function stripeWebhookHandler(req: Request): Promise<Response> {\n  const sig = req.headers.get('stripe-signature');\n  if (!sig) return Response.json({ error: 'missing signature' }, { status: 400 });\n  const event = stripe.webhooks.constructEvent(await req.text(), sig, env.STRIPE_WEBHOOK_SECRET);\n  if (event.type === 'invoice.paid') {\n    await markInvoicePaid(event.data.object.id);\n  }\n  return Response.json({ ok: true });\n}",
+      "context": "Stripe webhook handler in src/billing/stripe-webhook.ts. Verifies the signature with STRIPE_WEBHOOK_SECRET and marks invoices paid when invoice.paid arrives."
+    },
+    {
+      "id": "chunk-retry",
+      "document_id": "doc-utils-retry",
+      "chunk_index": 0,
+      "start_line": 5,
+      "end_line": 22,
+      "symbol_name": "retryWithBackoff",
+      "symbol_kind": "function",
+      "content": "export async function retryWithBackoff<T>(fn: () => Promise<T>, opts: { max: number; baseMs: number }): Promise<T> {\n  let lastErr: unknown;\n  for (let attempt = 1; attempt <= opts.max; attempt++) {\n    try { return await fn(); } catch (err) { lastErr = err; }\n    await new Promise((r) => setTimeout(r, opts.baseMs * 2 ** (attempt - 1)));\n  }\n  throw lastErr instanceof Error ? lastErr : new Error('retry exhausted');\n}",
+      "context": "Generic retry-with-exponential-backoff helper in src/utils/retry.ts. Wraps an async function and retries up to opts.max times."
+    },
+    {
+      "id": "chunk-logger",
+      "document_id": "doc-utils-logger",
+      "chunk_index": 0,
+      "start_line": 1,
+      "end_line": 14,
+      "symbol_name": "logger",
+      "symbol_kind": "module",
+      "content": "import pino from 'pino';\n\nexport const logger = pino({\n  level: process.env.LOG_LEVEL ?? 'info',\n  redact: ['req.headers.authorization', 'token', 'password'],\n});",
+      "context": "Pino-based structured logger in src/utils/logger.ts. Honors LOG_LEVEL and redacts secrets like Authorization headers, tokens, and passwords."
+    },
+    {
+      "id": "chunk-config",
+      "document_id": "doc-config",
+      "chunk_index": 0,
+      "start_line": 1,
+      "end_line": 12,
+      "symbol_name": "env",
+      "symbol_kind": "module",
+      "content": "export const env = {\n  DATABASE_URL: process.env.DATABASE_URL!,\n  STRIPE_SECRET: process.env.STRIPE_SECRET!,\n  STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET!,\n  SESSION_TTL_MS: Number(process.env.SESSION_TTL_MS ?? 7 * 24 * 60 * 60 * 1000),\n};",
+      "context": "App configuration in src/config.ts. Reads DATABASE_URL and Stripe secrets from env, with a SESSION_TTL_MS default of 7 days."
+    }
+  ],
+  "queries": [
+    {
+      "id": "q1",
+      "query": "how does the login handler validate credentials",
+      "expected_chunk_ids": ["chunk-login-handler", "chunk-verify-password", "chunk-login-schema"]
+    },
+    {
+      "id": "q2",
+      "query": "how do we create a session token",
+      "expected_chunk_ids": ["chunk-create-session"]
+    },
+    {
+      "id": "q3",
+      "query": "logout flow and session revocation",
+      "expected_chunk_ids": ["chunk-logout-handler", "chunk-revoke-session"]
+    },
+    {
+      "id": "q4",
+      "query": "stripe webhook signature verification",
+      "expected_chunk_ids": ["chunk-stripe-webhook"]
+    },
+    {
+      "id": "q5",
+      "query": "where do we sum invoice line items",
+      "expected_chunk_ids": ["chunk-create-invoice"]
+    },
+    {
+      "id": "q6",
+      "query": "retry with exponential backoff",
+      "expected_chunk_ids": ["chunk-retry"]
+    },
+    {
+      "id": "q7",
+      "query": "logger that redacts authorization headers",
+      "expected_chunk_ids": ["chunk-logger"]
+    },
+    {
+      "id": "q8",
+      "query": "session ttl configuration",
+      "expected_chunk_ids": ["chunk-config", "chunk-create-session"]
+    }
+  ]
+}

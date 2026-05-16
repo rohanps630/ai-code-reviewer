@@ -109,6 +109,21 @@ uv run python -m evals.cli run \
 
 Output: `evals/results/<run-id>/summary.json` plus per-example traces in `evals/results/<run-id>/raw/`.
 
+## Retrieval smoke benchmark (Phase 2.8)
+
+Before the full eval harness exists, a small smoke benchmark proves the hybrid retrieval pipeline works end-to-end against real Postgres + pgvector.
+
+```bash
+DATABASE_URL=postgres://... pnpm bench:retrieval
+```
+
+- Fixture: [`evals/retrieval-v0/fixture.json`](../evals/retrieval-v0/fixture.json) — 8 docs / 11 chunks / 8 queries with hand-labeled expected chunk ids.
+- Embeddings: deterministic synthetic (sha256 → 1024 dims). Tests the SQL + RRF orchestration, not semantic quality.
+- Output: `evals/results/retrieval-v0-<timestamp>/summary.json` with `mean_recall@{1,3,5,10}`, p50/p95 latency, and per-query rankings.
+- Requires: `pnpm build:packages` first (the script imports compiled `@acr/agent` / `@acr/db`).
+
+The benchmark truncates the fixture repo's rows on every run; don't aim it at a production database. Reranking is disabled by default to keep runs free + reproducible. Phase 4 will graduate this into the real eval harness with real embeddings + larger datasets.
+
 ## Comparing runs
 
 ```bash
