@@ -1,31 +1,34 @@
 /**
  * Hybrid retrieval orchestrator — the public entry point.
  *
- *   query  ───▶ embed (Voyage)  ─┐
- *           │                    ▼
- *           │             vector lane (pgvector + HNSW + cosine)
- *           │
- *           ▶ BM25 lane (Postgres FTS over content_tsv)
- *                                │
- *                                ▼
- *                       reciprocal rank fusion
- *                                │
- *                                ▼
- *                          SearchResult[]
+ *   query ─┬─▶ Voyage embedQuery() ─▶ vector lane (pgvector + HNSW + cosine)
+ *          │                                       │
+ *          └─▶ BM25 lane (Postgres FTS / ts_rank)  │
+ *                              │                   ▼
+ *                              └─▶ RRF (k=60) ─┐
+ *                                              ▼
+ *                              [optional] Cohere rerank-v3.5
+ *                                              ▼
+ *                                       SearchResult[]
  *
- * The two lanes run in parallel via `Promise.all`. Cohere reranking is
- * a separate concern that wraps this function in Phase 2.6.
+ * The two retrieval lanes run in parallel via `Promise.all`. Rerank is
+ * applied iff a `reranker` is wired into the retriever's deps. With
+ * rerank: candidatesPerLane controls how wide we search; `limit`
+ * controls how many survive rerank. Without rerank: `limit` is just
+ * the top-N of the RRF list.
  *
  * Dependency injection:
  *   - `embedder`  → any object with `embedQuery(string): Promise<Vector>`.
  *   - `executor`  → any `{ execute(sql): Promise<rows> }`.
- * Both default to env-backed singletons via {@link searchCode}'s sibling
- * factory, but the underlying {@link HybridRetriever.search} method
- * takes them explicitly so tests can swap them.
+ *   - `reranker`  → optional; any object satisfying {@link Reranker}.
+ * The {@link HybridRetriever.search} method takes them explicitly so
+ * tests can swap them; the env-backed {@link searchCode} convenience
+ * wires Voyage + Cohere + the db client.
  */
 
 import { bm25Search } from "./bm25.js";
 import { type Vector, VoyageClient } from "./embeddings.js";
+import { CohereReranker, type Reranker } from "./rerank.js";
 import { reciprocalRankFusion } from "./rrf.js";
 import { DEFAULT_SEARCH_OPTIONS, type SearchOptions, type SearchResult } from "./types.js";
 import { vectorSearch } from "./vector.js";
@@ -41,6 +44,9 @@ export interface SqlExecutor {
 export type HybridRetrieverDeps = {
   embedder: QueryEmbedder;
   executor: SqlExecutor;
+  /** Optional cross-encoder rerank step. When present, RRF feeds it the
+   *  top `candidatesPerLane` * 2 chunks and the reranker returns `limit`. */
+  reranker?: Reranker;
 };
 
 export class HybridRetriever {
@@ -72,7 +78,14 @@ export class HybridRetriever {
       },
     );
 
-    return reciprocalRankFusion(bm25Hits, vectorHits, { k: rrfK, limit });
+    // Without a reranker the RRF cap IS the final cap.
+    // With a reranker we let RRF emit a wider candidate pool (up to
+    // 2× candidatesPerLane, deduped) and let Cohere narrow it.
+    const rrfLimit = this.deps.reranker ? candidatesPerLane * 2 : limit;
+    const fused = reciprocalRankFusion(bm25Hits, vectorHits, { k: rrfK, limit: rrfLimit });
+
+    if (!this.deps.reranker || fused.length === 0) return fused.slice(0, limit);
+    return this.deps.reranker.rerank(trimmed, fused, { topN: limit });
   }
 }
 
@@ -102,9 +115,16 @@ async function defaultRetriever(): Promise<HybridRetriever> {
   if (!serverEnv.VOYAGE_API_KEY) {
     throw new Error("VOYAGE_API_KEY is not set. Configure it before calling searchCode().");
   }
+  // Reranker is optional — if COHERE_API_KEY isn't set we skip the
+  // rerank step rather than refusing to retrieve. Recall stays good;
+  // precision is what suffers, which we'll catch in the eval suite.
+  const reranker = serverEnv.COHERE_API_KEY
+    ? new CohereReranker({ apiKey: serverEnv.COHERE_API_KEY })
+    : undefined;
   cachedRetriever = new HybridRetriever({
     embedder: new VoyageClient({ apiKey: serverEnv.VOYAGE_API_KEY }),
     executor: db as unknown as SqlExecutor,
+    reranker,
   });
   return cachedRetriever;
 }

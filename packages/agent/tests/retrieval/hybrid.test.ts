@@ -16,7 +16,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { HybridRetriever } from "../../src/retrieval/hybrid.js";
-import type { RawChunkRow } from "../../src/retrieval/types.js";
+import type { RawChunkRow, SearchResult } from "../../src/retrieval/types.js";
 
 function row(id: string, score: number): RawChunkRow {
   return {
@@ -128,5 +128,45 @@ describe("HybridRetriever.search", () => {
       vectorRank: 1,
     });
     expect(typeof first?.rrfScore).toBe("number");
+  });
+
+  it("invokes the reranker when one is configured", async () => {
+    const bm25Rows = ["a", "b", "c"].map((id) => row(id, 0.5));
+    const vectorRows = ["a", "b", "c"].map((id) => row(id, 0.5));
+    const { executor, embedder } = makeDeps({ bm25Rows, vectorRows });
+
+    let rerankCalledWith: string | undefined;
+    const reranker = {
+      rerank: vi.fn(async (query: string, hits: SearchResult[], opts: { topN?: number } = {}) => {
+        rerankCalledWith = query;
+        // Pretend Cohere reverses the order and tags scores.
+        const reversed = [...hits].reverse().slice(0, opts.topN ?? hits.length);
+        return reversed.map((h, i) => ({
+          ...h,
+          cohereScore: 1 - i * 0.1,
+          cohereRank: i + 1,
+        }));
+      }),
+    };
+
+    const retriever = new HybridRetriever({ executor, embedder, reranker });
+    const results = await retriever.search("auth flow", { limit: 2 });
+
+    expect(reranker.rerank).toHaveBeenCalledOnce();
+    expect(rerankCalledWith).toBe("auth flow");
+    expect(results).toHaveLength(2);
+    // Each result carries the reranker's breadcrumbs
+    for (const r of results) {
+      expect(typeof r.cohereScore).toBe("number");
+      expect(typeof r.cohereRank).toBe("number");
+    }
+  });
+
+  it("skips the reranker when fused results are empty", async () => {
+    const { executor, embedder } = makeDeps({ bm25Rows: [], vectorRows: [] });
+    const reranker = { rerank: vi.fn(async () => []) };
+    const retriever = new HybridRetriever({ executor, embedder, reranker });
+    expect(await retriever.search("anything")).toEqual([]);
+    expect(reranker.rerank).not.toHaveBeenCalled();
   });
 });

@@ -29,11 +29,15 @@ export type ChunkHit = {
   score: number;
 };
 
-/** Final fused result with lane provenance. */
+/** Final fused result with lane provenance. After a Cohere rerank
+ *  pass `cohereScore` + `cohereRank` are also populated; before, they
+ *  stay undefined. */
 export type SearchResult = ChunkHit & {
   bm25Rank: number | null;
   vectorRank: number | null;
   rrfScore: number;
+  cohereScore?: number;
+  cohereRank?: number;
 };
 
 /**

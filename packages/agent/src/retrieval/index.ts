@@ -18,5 +18,8 @@ export { reciprocalRankFusion } from "./rrf.js";
 export { VoyageClient, EmbeddingError } from "./embeddings.js";
 export type { Vector, VoyageClientOptions } from "./embeddings.js";
 
+export { CohereReranker, RerankError } from "./rerank.js";
+export type { Reranker, CohereRerankerOptions, RerankOptions } from "./rerank.js";
+
 export type { ChunkHit, SearchResult, SearchOptions, RawChunkRow } from "./types.js";
 export { DEFAULT_SEARCH_OPTIONS, rawRowToHit } from "./types.js";
