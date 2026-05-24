@@ -537,4 +537,50 @@ CLI → 4.8 rewrite eval.yml (drop Braintrust) → 4.9 first real run
 - Gates: `uv run ruff check .` clean, `uv run ruff format --check .`
   clean, `uv run pytest` 115/115 (was 96). TS gates untouched.
 
+### Task 4.5 — runner orchestrator + pricing — done
+
+- `apps/indexer/src/evals/pricing.py` — static Anthropic price table
+  (USD per million tokens) for Haiku 4.5, Sonnet 4.5 / 4.6, Opus 4.7.
+  `anthropic_cost_usd(model, input/output/cache_read/cache_creation)`
+  returns 0.0 for unknown model names so a typo'd run reports zero
+  instead of crashing. Snapshot, not live — update when Anthropic
+  changes prices.
+- `apps/indexer/src/evals/runner.py` — orchestrator. Public surfaces:
+  - `BridgeResult` (frozen dataclass) — what the agent bridge returns
+    per example: `PredictedReview`, `latency_ms`, `cost_usd`.
+  - `AgentBridge` (Protocol) — callable `(EvalExample) -> BridgeResult`.
+    The 4.6 TS bridge will be a subprocess-wrapping concrete class
+    implementing this; tests pass an in-process stub.
+  - `ExampleTrace` (Pydantic) — the per-example record persisted to
+    `evals/results/<run-id>/raw/<id>.json`. Bundles
+    `_BridgeTrace`, `_JudgeTrace | None`, `_MatchTrace`, and the
+    captured `judge_error` string when the judge blew up. All frozen,
+    `extra="forbid"`.
+  - `run_eval(examples, bridge, judge_client, judge_model=...,
+    output_dir=None, on_example_start=None, on_example_done=None)`
+    walks examples in order, calls `bridge`, runs `match_findings`,
+    invokes `judge_example` (catches `JudgeError`, records it in the
+    trace, does NOT abort the run), computes judge cost from token
+    counters via `anthropic_cost_usd`, and emits an `ExampleResult`
+    ready for `build_summary`. Per-example trace files are written
+    only when `output_dir` is given.
+- The callback hooks (`on_example_start` / `on_example_done`) exist
+  so the CLI in 4.7 can stream progress without the runner knowing
+  anything about TTYs or logging.
+- `MatchResult` is a frozen dataclass with tuples, so the runner
+  hand-converts it to a Pydantic `_MatchTrace` (lists of matched +
+  unmatched truth indices) for serialization.
+- `apps/indexer/tests/test_pricing.py` — 5 tests covering the
+  pricing table edges (base case, cache_read discount, cache_write
+  premium, unknown model fallback, known-models surface).
+- `apps/indexer/tests/test_runner.py` — 8 tests with the same
+  in-test `_FakeClient` shape as the judge tests + a `_StubBridge`.
+  Coverage: happy path with cost-attribution math, judge failure
+  captured per-example without aborting, trace serialization (incl.
+  the judge-error case), output_dir omitted → no disk writes,
+  callbacks fire in order, example order preserved, custom judge
+  model honored.
+- Gates: `uv run ruff check .` clean, `uv run ruff format --check .`
+  clean, `uv run pytest` 128/128 (was 115). TS gates untouched.
+
 
