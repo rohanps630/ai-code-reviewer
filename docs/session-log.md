@@ -766,3 +766,44 @@ Build-time stays $0 because the tests inject stubs.
 - Gates: pytest 158/158 (was 149 → +9 renderer tests), ruff +
   format clean, biome clean, TS suite untouched (165). YAML
   parses via pyyaml.
+
+### Phase 4.9 (hybrid) — dataset v1 expanded 5 → 10 seeds — done
+
+Per the "hybrid" path agreed on (rather than the full 30+ synthetic
+expansion that would muddy the "real PRs only" signal), appended 5
+more synthetic seeds focused on category gaps and difficulty mix.
+
+New seeds (`evals/datasets/v1/examples.jsonl`):
+
+| id | difficulty | category | gap closed |
+|---|---|---|---|
+| seed-ts-swallowed-exception | easy | bug/minor | error-handling antipattern |
+| seed-ts-broken-type-cast | easy | bug/major | `as any` papering over real shape mismatch |
+| seed-py-leaked-secret | easy | security/critical | hardcoded API key |
+| seed-py-quadratic-loop | medium | perf/major | first perf example |
+| seed-ts-regex-redos | hard | perf/critical | ReDoS via nested quantifiers |
+
+Three of the new five include `false_positive_traps` — total dataset
+now has 6/10 with traps for the deterministic scorer.
+
+After: category coverage now spans bug (6) / security (2) / perf (2);
+style intentionally still uncovered (low-signal for portfolio evals).
+Difficulty mix 5/3/2 = 50/30/20, close to the 50/35/15 docs/evals.md
+target. Future real-PR additions should lean medium.
+
+Dataset README updated with the full ten-row table, category coverage
+breakdown, and revised difficulty-mix table. Schema-drift canary
+test (`test_dataset_v1_loads`) absorbs the additions without change.
+
+Honest framing of what this gives us:
+
+- ✅ Broader category exercise so scorers see perf + security examples
+- ✅ Less noisy verdicts (10 examples → each one swings 10% vs 20%)
+- ⚠️  Still synthetic; pr_url is `null` for all 10. The "30+ real PRs
+    from public repos" ship criterion in docs/roadmap.md is met by
+    the existing `/new-eval` Claude Code command, run interactively
+    by the human against real PRs they care about. Synthetic-only
+    expansion would be the low-value version of 4.9.
+
+Gates: pytest 158/158 (unchanged — the dataset load test already
+covered the new examples), ruff clean, TS suite untouched.
