@@ -62,7 +62,7 @@ jobs:
           SKIP_ENV_VALIDATION: "1"
 
       # ───── Python toolchain ─────
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install uv
