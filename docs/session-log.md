@@ -489,4 +489,52 @@ CLI → 4.8 rewrite eval.yml (drop Braintrust) → 4.9 first real run
 - Gates: `uv run ruff check .` clean, `uv run ruff format --check .`
   clean, `uv run pytest` 96/96 (was 84). TS gates untouched.
 
+### Task 4.4 — summary writer + delta — done
+
+- `apps/indexer/src/evals/summary.py` — pure aggregator + JSON I/O.
+  Three public surfaces:
+  - `ExampleResult` (frozen dataclass, internal) — per-example
+    outcome handed to the aggregator: match result, judge fields,
+    latency, and two cost numbers (review + judge) so the runner
+    can attribute cost cleanly.
+  - `RunSummary` (Pydantic v2, frozen, `extra="forbid"`) — the
+    top-of-run artifact persisted to
+    `evals/results/<run-id>/summary.json`. Carries every aggregate
+    in `docs/evals.md` (judge_score, deterministic_score,
+    false_positive_rate, trap_rate, p50/p95 latency, mean +
+    total cost), failed-judge count, per-difficulty breakdowns,
+    optional `delta` map vs a prior run, and a `verdict` literal.
+  - `DifficultyBreakdown` — per-difficulty slice. `judge_score`
+    can be `None` when every judge call in that slice errored.
+- `build_summary(...)` is pure. Handles empty `results` (zero
+  everywhere, verdict "below-bar"). Skips errored judges when
+  computing the mean but still counts them in `failed_judge_count`.
+  Cost-per-review aggregates both review and judge spend so the
+  pass-bar check sees true per-example cost.
+- Verdict logic encodes the Phase-4-ship bars from `docs/evals.md`:
+  `judge_score ≥ 0.55 ∧ deterministic_score ≥ 0.40 ∧
+  false_positive_rate ≤ 1.5 ∧ mean_cost_per_review_usd ≤ 0.05`.
+  Bars live in a `PASS_BARS` dict at module top so they're easy
+  to find when a phase ship moves them.
+- `percentile(values, pct)` — linear-interpolation percentile that
+  returns 0 on empty input and rejects `pct` outside `[0, 1]`.
+- `_delta_against(current, prior)` — per-metric delta map keyed by
+  the same field names as `RunSummary`. Built only when a prior is
+  passed in; `build_summary` re-creates the summary via
+  `model_copy(update={"delta": ...})` so the type stays frozen.
+- I/O helpers: `dump_summary` (pretty JSON, mkdir parents),
+  `load_summary` (Pydantic strict validation), and
+  `find_latest_summary(results_root)` — walks `results_root/*/summary.json`,
+  skips half-written / non-parsing directories, returns the most
+  recent by `created_at`. The runner uses this to find the prior
+  main-branch run for the delta block.
+- `apps/indexer/tests/test_summary.py` — 19 new tests across five
+  classes: percentile edges, empty / passing / below-bar build
+  paths, FP/trap aggregation, errored-judge handling, per-difficulty
+  breakdown (including empty-slice with `None` judge), delta
+  positive/negative, round-trip serde, `find_latest_summary`
+  picking the most recent, and skipping malformed prior files.
+- Gates: `uv run ruff check .` clean, `uv run ruff format --check .`
+  clean, `uv run pytest` 115/115 (was 96). TS gates untouched.
+
 
