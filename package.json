@@ -11,6 +11,7 @@
   "scripts": {
     "cli": "node scripts/cli.mjs",
     "bench:retrieval": "node scripts/retrieval-bench.mjs",
+    "evals:run": "cd apps/indexer && uv run python -m evals.cli run",
     "build": "turbo run build",
     "build:packages": "tsc --build",
     "dev": "turbo run dev",

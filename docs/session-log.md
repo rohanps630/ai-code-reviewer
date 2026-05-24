@@ -649,3 +649,67 @@ CLI → 4.8 rewrite eval.yml (drop Braintrust) → 4.9 first real run
   format clean, biome clean (had to format the new
   `.mjs` fixture so its trailing-comma + braces matched
   biome's style). TS suite untouched (165 tests).
+
+### Phase 4.7 — eval harness CLI — done
+
+- `apps/indexer/src/evals/cli.py` upgraded from the stub.
+  Argparse-driven, one `run` subcommand for now. Wires the
+  dataset loader + bridge + judge + runner + summary writer
+  into one command:
+    `uv run python -m evals.cli run --dataset v1 [opts]`
+  or via pnpm wrapper:
+    `pnpm evals:run -- --dataset v1`
+- Args: `--dataset` (required), `--datasets-root`,
+  `--results-root`, `--output-dir`, `--run-id`, `--limit`,
+  `--bridge-model {haiku,sonnet,opus}`, `--bridge-timeout`,
+  `--judge-model`, `--agent-version` (defaults to git short
+  SHA), `--prompt-version` (manual sync — see
+  CURRENT_PROMPT_VERSION in packages/agent/src/prompts),
+  `--no-delta`.
+- `_ResilientBridge` wraps the SubprocessBridge so a single
+  example's BridgeError degrades to an empty review (with a
+  stderr warning) instead of aborting a 50-example run.
+  Failed examples surface naturally as low judge scores;
+  the failure message lands in stderr for the operator and
+  the trace's bridge.review is empty.
+- Lazy-imports the Anthropic SDK so test paths stay clean.
+  Fails loud with a clear message if ANTHROPIC_API_KEY is
+  missing (the judge needs it).
+- Run-id auto-generated as `<dataset>-<UTC-timestamp>` when
+  not supplied. Output dir defaults to
+  `<results_root>/<run_id>/`. summary.json lands at the run
+  root; per-example traces under `raw/<id>.json` (runner
+  4.5 wires that).
+- Pretty-printer dumps the summary to stdout with delta
+  block when a prior run is in the results dir.
+- Exit codes: `pass` verdict → 0, `below-bar` → 1, dataset-
+  not-found → 2. CI fails the job on `below-bar` so PR
+  comments still post.
+- `pnpm evals:run` script + a new menu entry under "Evals"
+  in scripts/cli.mjs (with a confirm prompt — real
+  Anthropic tokens spent per example). Maintenance-rule
+  compliant.
+- 10 new pytest cases. Stub bridge + stub Anthropic client
+  injected via the `run()` function's optional `bridge_factory`
+  / `anthropic_client_factory` parameters. Coverage:
+    - argparse shape (required dataset, optional args parse)
+    - _ResilientBridge passthrough on success
+    - _ResilientBridge degradation on BridgeError (with
+      stderr capture)
+    - dataset-not-found → exit 2
+    - happy path: summary.json + per-example traces land
+    - --limit honored
+    - bridge failure mid-run doesn't abort; failed example
+      ends up with empty findings in the trace
+    - auto-generated run_id starts with dataset version
+    - --judge-model stamps the summary correctly
+- Gates: `uv run ruff check .` clean (one noqa pair for
+  `subprocess.run(["git", ...])`), `uv run ruff format
+  --check .` clean, `uv run pytest` 149/149 (was 139),
+  biome clean, TS suite untouched (165).
+
+**Phase 4.7 ships the first place real Anthropic tokens
+get spent.** Run-time invocation against the real dataset
+will charge per the judge model's pricing (default
+`claude-sonnet-4-5`, ~$0.02 per example with caching).
+Build-time stays $0 because the tests inject stubs.

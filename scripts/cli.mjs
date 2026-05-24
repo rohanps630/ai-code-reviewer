@@ -325,6 +325,15 @@ const tree = {
                 "Truncates the fixture repo's rows in chunks/documents/repos on the configured DATABASE_URL.",
             },
           },
+          {
+            label: "Run eval pass against dataset v1 (real Anthropic calls)",
+            run: {
+              cmd: "pnpm",
+              args: ["evals:run", "--", "--dataset", "v1"],
+              confirm:
+                "Spends real Anthropic tokens per example. Requires ANTHROPIC_API_KEY. Writes results to evals/results/<run-id>/.",
+            },
+          },
         ],
       },
     },
