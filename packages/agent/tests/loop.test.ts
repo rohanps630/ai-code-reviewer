@@ -87,7 +87,10 @@ describe("prompts", () => {
     expect(CURRENT_SYSTEM_PROMPT.length).toBeGreaterThan(0);
   });
 
-  it("CURRENT_PROMPT_VERSION is v0.1", () => {
-    expect(CURRENT_PROMPT_VERSION).toBe("v0.1");
+  it("CURRENT_PROMPT_VERSION matches the v0.x semver shape", () => {
+    // Bumps to the current version are tracked in docs/prompts.md;
+    // we only assert the shape here so this test doesn't churn on
+    // every prompt bump.
+    expect(CURRENT_PROMPT_VERSION).toMatch(/^v\d+\.\d+$/);
   });
 });

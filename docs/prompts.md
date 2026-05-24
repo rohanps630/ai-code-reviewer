@@ -23,23 +23,26 @@
 
 ### v0.1 — initial placeholder (Phase 1)
 
-- **Date**: TBD
-- **Author**: TBD
-- **Change**: Minimal system prompt accepting a diff and returning structured findings JSON. No retrieval context, no tools.
+- **Date**: 2026-05-13
+- **Author**: project author
+- **Change**: One-liner ("(Real prompt arrives in Phase 3.)") so the
+  file existed for the loop stub to import. Not used in any review.
 - **Eval impact**: N/A (no eval dataset yet)
 
-<!--
-### v0.2 — added few-shot examples
+### v0.2 — tool-using reviewer (Phase 3.1)
 
-- **Date**: YYYY-MM-DD
-- **Author**: your-handle
-- **Change**: Added 3 few-shot examples covering security bug, perf issue, logic error.
-- **Eval impact**:
-  - Judge score: 0.62 → 0.71 (+0.09)
-  - False positives: 1.4/example → 0.9 (-0.5)
-  - Cost per review: $0.012 → $0.018 (+50%)
-- **Verdict**: ship — quality gain justifies cost; will revisit during Phase 5 caching work.
--->
+- **Date**: 2026-05-15
+- **Author**: project author
+- **Change**: First real system prompt. Sets up the senior-engineer
+  reviewer persona, documents the four tools the agent will have
+  available (`search_code`, `read_file`, `find_references`,
+  `run_tests`), specifies the `submit_review` tool as the final step,
+  and adds a prompt-injection guard against instructions embedded in
+  diff or retrieved content.
+- **Eval impact**: not yet measured. Phase 3.1 ships the prompt but
+  the loop that uses it lands in 3.4; eval baseline is Phase 4.
+- **Verdict**: provisional. Expected to bump to v0.3 once retrieval +
+  loop are wired end-to-end and the first eval run surfaces gaps.
 
 ## Prompt anatomy
 
