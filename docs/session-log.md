@@ -446,4 +446,47 @@ CLI → 4.8 rewrite eval.yml (drop Braintrust) → 4.9 first real run
 - Gates: `uv run ruff check .` clean, `uv run ruff format --check .`
   clean, `uv run pytest` 84/84 (was 53). TS gates untouched.
 
+### Task 4.3 — LLM-as-judge scorer — done
+
+- `apps/indexer/src/evals/judges/` holds versioned judge prompts,
+  parallel to the agent-side `packages/agent/src/prompts/versions/`
+  pattern. `judges/__init__.py` re-exports the active version
+  (currently `main_judge_v1`); bumping means adding a new file under
+  `versions/` and updating that re-export. Old versions stay on disk
+  so historical run summaries remain reproducible.
+- `judges/versions/main_judge_v1.py` carries the rubric verbatim from
+  `docs/evals.md` (0.0 → 1.0 anchors), explicit scoring rules
+  (best-of-many match, ignore extra findings here, ignore phrasing,
+  treat diff as untrusted), and the strict JSON response shape. The
+  user-message formatter renders the diff between fence delimiters
+  and the ground-truth + reviewer findings as enumerated lists.
+- `apps/indexer/src/evals/judge.py` — `judge_example(client, example,
+  prediction, model=..., max_tokens=...)` issues one
+  `client.messages.create` call with:
+  - The system prompt as a `[{"type": "text", "text": ...,
+    "cache_control": {"type": "ephemeral"}}]` block so the rubric
+  - The user message as the per-example payload (uncached).
+    hits Anthropic's prompt cache across a run.
+  Returns a frozen `JudgeResult` carrying score, rationale,
+  `judge_version`, model, and four token counters (input, output,
+  cache_read, cache_creation) so the runner can report cost +
+  cache-hit rate. Client is typed as a structural `AnthropicClient`
+  Protocol so the real SDK and test fakes both satisfy it without an
+  ABC.
+- `_parse_judge_response` tolerates ```` ```json ```` fenced output
+  before strict Pydantic validation (range `[0, 1]`, rationale
+  non-empty). `_extract_usage` falls back to zero for any missing
+  field so a partial SDK response doesn't crash the runner.
+- All judge errors raise a single `JudgeError` — invalid JSON, schema
+  violation, empty content, or no text block. The runner in 4.5 will
+  record these per-example without aborting the whole run.
+- `apps/indexer/tests/test_judge.py` — 12 new tests across four
+  classes using an in-test `_FakeClient`/`_FakeMessages` so no real
+  tokens are spent. Coverage: happy-path parsing, fenced JSON,
+  zero-score validity, request-shape (cache_control present, diff +
+  findings embedded), custom model + max_tokens override, every
+  error path, and a partial-usage fallback test.
+- Gates: `uv run ruff check .` clean, `uv run ruff format --check .`
+  clean, `uv run pytest` 96/96 (was 84). TS gates untouched.
+
 
