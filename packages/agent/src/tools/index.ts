@@ -31,4 +31,6 @@ export {
 export type { ToolRegistry, AnthropicTool } from "./registry.js";
 export { buildToolRegistry, toAnthropicTools, executeToolCall } from "./registry.js";
 
-// Tools land below as Phase 3 progresses.
+// Tools
+export { createSearchCodeTool } from "./search-code.js";
+export type { SearchCodeRetriever } from "./search-code.js";
