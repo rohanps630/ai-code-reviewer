@@ -123,6 +123,9 @@ importers:
       '@acr/shared':
         specifier: workspace:*
         version: link:../shared
+      '@anthropic-ai/sdk':
+        specifier: ^0.96.0
+        version: 0.96.0(zod@3.25.76)
       zod:
         specifier: ^3.23.0
         version: 3.25.76

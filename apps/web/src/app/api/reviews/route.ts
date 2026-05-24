@@ -99,17 +99,19 @@ async function pickSource(input: {
   diff: string;
   model: "haiku" | "sonnet" | "opus";
 }): Promise<AsyncIterable<ReviewChunk>> {
+  // Phase 3.4 landed the real agent loop but we don't fire it from the
+  // route yet — the dark-code pattern from Phase 2.7. To cut over,
+  // drop this try/catch and return `runReview({...})` directly.
+  // Until then: try runReview, fall back to the placeholder on any
+  // error (missing API key, network, etc.) so dev requests don't 500.
   try {
     const gen = runReview({ diff: input.diff, model: input.model });
-    // Force the generator to start so the "Not implemented" throw surfaces
-    // synchronously here rather than on the first iteration in the stream.
+    // Force the generator to start so any setup error (missing env,
+    // failed dep wiring) surfaces here rather than mid-stream.
     const first = await gen.next();
     return prepend(first, gen);
-  } catch (err) {
-    if (err instanceof Error && /not implemented/i.test(err.message)) {
-      return placeholderReview();
-    }
-    throw err;
+  } catch {
+    return placeholderReview();
   }
 }
 

@@ -1,23 +1,10 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { runReview } from "../src/loop.js";
 import { CURRENT_PROMPT_VERSION, CURRENT_SYSTEM_PROMPT } from "../src/prompts/index.js";
 import type { Finding, ReviewChunk, ReviewOutput } from "../src/types.js";
 
-// ---------------------------------------------------------------------------
-// loop.ts — stub behaviour
-// ---------------------------------------------------------------------------
-
-describe("runReview stub", () => {
-  it("throws 'Not implemented' when the generator is advanced", async () => {
-    const gen = runReview({ diff: "--- a\n+++ b\n@@ -1 +1 @@\n-old\n+new" });
-    await expect(gen.next()).rejects.toThrow("Not implemented");
-  });
-
-  it("throws an Error instance (not a string)", async () => {
-    const gen = runReview({ diff: "diff" });
-    await expect(gen.next()).rejects.toBeInstanceOf(Error);
-  });
-});
+// loop.ts behavior is covered in loop-agent.test.ts now that the
+// agent loop is real (Phase 3.4). This file keeps the type-shape
+// smoke tests + the prompt version sanity checks.
 
 // ---------------------------------------------------------------------------
 // types.ts — shape smoke tests (compile-time via expectTypeOf)
