@@ -42,7 +42,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # ───── TS toolchain (agent-bridge needs the compiled @acr/agent dist) ─────
       - uses: pnpm/action-setup@v4
