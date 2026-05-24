@@ -398,4 +398,52 @@ CLI → 4.8 rewrite eval.yml (drop Braintrust) → 4.9 first real run
   untouched: `pnpm lint` clean, `pnpm typecheck` clean, `pnpm test`
   165/165.
 
+### Task 4.2 — deterministic scorers — done
+
+- `apps/indexer/src/evals/scorers/` subpackage of pure-function
+  scorers, no I/O. Public surface re-exported from
+  `evals.scorers.__init__`:
+  - `types.py` — `PredictedFinding` / `PredictedReview` Pydantic v2
+    models that mirror `Finding` / `ReviewOutput` in
+    `packages/agent/src/types.ts`. `populate_by_name=True` + a
+    `locationHint` alias lets the wire format come in camelCase
+    while Python attributes stay snake_case. Frozen + `extra="forbid"`.
+  - `tokens.py` — token-overlap helpers: `tokenize` (lowercase, regex
+    split, short stoplist, cheap plural collapse via trailing-`s`),
+    `jaccard`, `summary_match(predicted, truth, threshold=0.2)`,
+    `summary_similarity` for diagnostics. Default threshold tuned
+    against the seed-dataset summaries: a paraphrased agent output
+    on `seed-py-null-deref` clears it (Jaccard ≈ 0.5) while
+    obviously-wrong outputs don't.
+  - `category.py` — exact-match scorer (0 / 1). Categories are too
+    distinct to grade on a gradient.
+  - `severity.py` — distance-based scorer: exact → 1.0, off-by-one
+    → 0.5, off-by-two → 0.0, using `{minor: 0, major: 1, critical: 2}`.
+  - `location.py` — `parse_location` understands `file:line`,
+    `file:start-end`, and bare `file`; `location_score` grades by
+    file-match + line-distance bucket (≤5 → 1.0, ≤20 → 0.5, > 20
+    → 0.3, one side missing line → 0.7). Returns 0.0 when files
+    differ or either side is unparseable.
+  - `findings.py` — `match_findings(predictions, ground_truth)`
+    does a greedy 1-to-1 pairing of predictions to truth findings
+    using `summary_similarity`, then classifies the leftovers as
+    `false_positives` or `false_positive_traps_triggered` via
+    semantic match against `ground_truth.false_positive_traps`.
+    Returns a frozen `MatchResult` dataclass with `matches`,
+    `found_ground_truth_bug`, `false_positives`,
+    `false_positive_traps_triggered`, and `unmatched_truth_indices`
+    — exactly the per-example shape `docs/evals.md` calls for.
+- `apps/indexer/tests/test_scorers.py` — 31 new tests across nine
+  classes covering the wire-format alias, tokenization edges,
+  Jaccard edges, the real-world threshold (seed-dataset-flavored
+  pair), all severity transitions, every location bucket, and the
+  matcher's greedy 1-to-1 behavior + trap detection.
+- Decision noted: the semantic matcher is intentionally a token-overlap
+  heuristic, not embeddings. Embeddings would buy precision on
+  paraphrased predictions but require a new dep (Voyage) and an ADR;
+  v1 ships without it. The whole module is a one-import swap if we
+  ever need it — `match_findings` only calls `summary_similarity`.
+- Gates: `uv run ruff check .` clean, `uv run ruff format --check .`
+  clean, `uv run pytest` 84/84 (was 53). TS gates untouched.
+
 
