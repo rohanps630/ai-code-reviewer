@@ -584,3 +584,68 @@ CLI → 4.8 rewrite eval.yml (drop Braintrust) → 4.9 first real run
   clean, `uv run pytest` 128/128 (was 115). TS gates untouched.
 
 
+
+### Phase 4.6 — TS bridge for the agent — done
+
+- `scripts/agent-bridge.mjs`: zero-dep Node CLI. Reads
+  `{ diff, model?, repoContext? }` from stdin, calls
+  `runReview` from the compiled `@acr/agent`, drains the
+  ReviewChunk stream collecting the final, writes a single
+  envelope line to stdout: success
+  `{ ok:true, review, latency_ms, cost_usd }` or soft failure
+  `{ ok:false, error }`. Exit code only goes non-zero for
+  truly catastrophic failures (stdin parse, uncaught throw);
+  parsable envelopes always exit 0 so the Python wrapper
+  distinguishes by reading the envelope.
+- Cost reporting v1: bridge always reports `cost_usd: 0.0`.
+  The agent loop tracks `totalCostUsd` as a local variable
+  and doesn't expose it via any `ReviewChunk` type. Exposing
+  it cleanly requires either a new `ReviewChunk` variant or
+  a side channel on the loop's return — both are protected-
+  path changes deferred to Phase 5 cost telemetry. The eval
+  summary's `total_review_cost_usd` reads 0 until then;
+  judge cost is tracked correctly via its own pipeline.
+- `apps/indexer/src/evals/bridge.py`: `SubprocessBridge`
+  satisfies the `AgentBridge` Protocol from `runner.py`.
+  Spawns `node scripts/agent-bridge.mjs`, ships the
+  example's diff in, parses the JSON envelope back with
+  Pydantic (`_SuccessEnvelope` / `_FailureEnvelope`, both
+  frozen + `extra="forbid"` so wire-format drift fails
+  loud). Last-non-empty-line parsing tolerates a Node
+  process printing diagnostics before the result.
+- Failure surface (all → `BridgeError`):
+    - non-zero exit code (with stderr context)
+    - empty stdout
+    - non-JSON stdout
+    - missing `ok` field
+    - validation failure on either envelope shape
+    - `subprocess.TimeoutExpired`
+    - `OSError` on spawn
+  `run_eval` doesn't currently catch bridge errors (only
+  judge errors). Worth revisiting in 4.7 or Phase 5; for now
+  a bridge failure aborts the run with a clear message.
+- Defaults: `script_path` resolves to repo-root
+  `scripts/agent-bridge.mjs` at import time so misplacement
+  is caught early. `default_model="sonnet"`,
+  `timeout_seconds=300.0` (5 min — agent loops can run for
+  tens of seconds; defensive ceiling without strangling
+  slow runs).
+- `tests/fixtures/bridge/mock-bridge.mjs`: tiny Node fixture
+  the tests point at instead of the real bridge. Switches
+  behavior on markers embedded in the diff
+  (`__MOCK_SOFT_FAIL__`, `__MOCK_BAD_JSON__`,
+  `__MOCK_EMPTY__`, `__MOCK_NONZERO_EXIT__`, `__MOCK_HANG__`,
+  `__MOCK_ECHO_MODEL__`). Keeps the bridge tests
+  end-to-end-real (subprocess + stdio + JSON pipe) without
+  pulling in `@acr/agent` dist.
+- 11 new pytest cases: happy path (review + latency + cost),
+  default model = sonnet, default model override = haiku,
+  soft failure → BridgeError, all four catastrophic paths,
+  construction guard for missing script path, default
+  script path resolution, last-line fallback parsing
+  through noisy stdout. Tests skip gracefully if `node`
+  isn't on PATH.
+- Gates: `uv run pytest` 139/139 (was 128), ruff check +
+  format clean, biome clean (had to format the new
+  `.mjs` fixture so its trailing-comma + braces matched
+  biome's style). TS suite untouched (165 tests).
