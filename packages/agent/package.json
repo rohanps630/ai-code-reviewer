@@ -25,6 +25,7 @@
     "@acr/db": "workspace:*",
     "@acr/shared": "workspace:*",
     "@anthropic-ai/sdk": "^0.96.0",
+    "@e2b/code-interpreter": "^2.5.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {

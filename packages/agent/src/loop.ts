@@ -49,10 +49,13 @@ import { HybridRetriever, type SearchResult } from "./retrieval/index.js";
 import {
   type AnthropicTool,
   type JsonSchemaObject,
+  type RunTestsSandboxFactory,
   buildToolRegistry,
   createFindReferencesTool,
   createReadFileTool,
+  createRunTestsTool,
   createSearchCodeTool,
+  defaultE2BFactory,
   executeToolCall,
   toAnthropicTools,
 } from "./tools/index.js";
@@ -99,6 +102,10 @@ export type RunReviewDeps = {
   stream: AnthropicStreamFn;
   retriever: RetrieverLike;
   executor: SqlExecutorLike;
+  /** Optional E2B-style sandbox factory for the run_tests tool.
+   *  When omitted, run_tests is simply not registered — the model
+   *  loses access to it but the rest of the loop still works. */
+  sandboxFactory?: RunTestsSandboxFactory;
   /** Optional overrides — handy for evals + tests. */
   maxIterations?: number;
   costCapUsd?: number;
@@ -174,15 +181,16 @@ async function* runReviewWithDeps(
   // Build per-call tool registry — keeps deps explicit and tests easy.
   // Cast widens the concrete Tool<TInput,TOutput> generics; TS doesn't
   // do this automatically because Tool is contravariant in its input.
-  const registry = buildToolRegistry([
-    createSearchCodeTool(deps.retriever) as unknown as Parameters<
-      typeof buildToolRegistry
-    >[0][number],
-    createReadFileTool(deps.executor) as unknown as Parameters<typeof buildToolRegistry>[0][number],
-    createFindReferencesTool(deps.executor) as unknown as Parameters<
-      typeof buildToolRegistry
-    >[0][number],
-  ]);
+  type WidenedTool = Parameters<typeof buildToolRegistry>[0][number];
+  const tools: WidenedTool[] = [
+    createSearchCodeTool(deps.retriever) as unknown as WidenedTool,
+    createReadFileTool(deps.executor) as unknown as WidenedTool,
+    createFindReferencesTool(deps.executor) as unknown as WidenedTool,
+  ];
+  if (deps.sandboxFactory) {
+    tools.push(createRunTestsTool(deps.sandboxFactory) as unknown as WidenedTool);
+  }
+  const registry = buildToolRegistry(tools);
   const anthropicTools: AnthropicTool[] = [...toAnthropicTools(registry), SUBMIT_REVIEW_TOOL];
 
   const messages: Anthropic.MessageParam[] = [
@@ -382,11 +390,17 @@ async function defaultDeps(): Promise<RunReviewDeps> {
   });
 
   const anthropic = new Anthropic({ apiKey: serverEnv.ANTHROPIC_API_KEY });
+  // E2B is optional — missing the key just disables run_tests rather
+  // than failing the whole loop.
+  const sandboxFactory: RunTestsSandboxFactory | undefined = serverEnv.E2B_API_KEY
+    ? await defaultE2BFactory(serverEnv.E2B_API_KEY)
+    : undefined;
   cachedDeps = {
     stream: ((args: Anthropic.MessageStreamParams) =>
       anthropic.messages.stream(args)) as AnthropicStreamFn,
     retriever,
     executor: db as unknown as SqlExecutorLike,
+    sandboxFactory,
   };
   return cachedDeps;
 }
