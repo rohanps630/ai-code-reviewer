@@ -34,3 +34,9 @@ export { buildToolRegistry, toAnthropicTools, executeToolCall } from "./registry
 // Tools
 export { createSearchCodeTool } from "./search-code.js";
 export type { SearchCodeRetriever } from "./search-code.js";
+
+export { createReadFileTool } from "./read-file.js";
+export type { ReadFileExecutor } from "./read-file.js";
+
+export { createFindReferencesTool } from "./find-references.js";
+export type { FindReferencesExecutor } from "./find-references.js";
