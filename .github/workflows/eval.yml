@@ -1,43 +1,92 @@
 name: Evals
 
+# Runs the eval harness on PRs that touch the agent, the eval code,
+# or the dataset itself. Posts a summary as a PR comment. Real
+# Anthropic + Voyage tokens are spent per run; the workflow is gated
+# on ANTHROPIC_API_KEY being set as a repo secret so forks (which
+# don't get secrets) can't accidentally drain the budget.
+
 on:
-  push:
-    branches: ["eval/**"]
   pull_request:
     branches: [main]
     paths:
       - "packages/agent/**"
-      - "evals/**"
       - "apps/indexer/src/evals/**"
+      - "evals/datasets/**"
+      - "scripts/agent-bridge.mjs"
+      - ".github/workflows/eval.yml"
+      - ".github/scripts/render-eval-comment.py"
   workflow_dispatch:
     inputs:
       dataset:
-        description: "Dataset version (e.g. v1)"
+        description: "Dataset version under evals/datasets/"
         required: true
         default: "v1"
 
+concurrency:
+  # One eval run per PR / branch at a time; later pushes cancel earlier ones
+  # so we don't pay for stale evals.
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  run-evals:
-    name: Run eval harness
+  evals:
+    name: Run eval pass
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: apps/indexer
+    # Skip PRs from forks — they can't access secrets and the eval would
+    # be a noop with a confusing failure. Maintainers can re-run via
+    # workflow_dispatch after the PR is brought in-tree.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
+      # ───── TS toolchain (agent-bridge needs the compiled @acr/agent dist) ─────
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+      - name: Install pnpm deps
+        run: pnpm install --frozen-lockfile
+      - name: Build TypeScript packages
+        run: pnpm build:packages
+        env:
+          # The agent's env loader fails-loud at module load when keys
+          # are missing; build doesn't need them so opt out.
+          SKIP_ENV_VALIDATION: "1"
+
+      # ───── Python toolchain ─────
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
-
-      - name: Install dependencies
+      - name: Install Python deps
+        working-directory: apps/indexer
         run: uv sync
 
-      - name: Run evals
+      # ───── Gate on secrets ─────
+      - name: Check ANTHROPIC_API_KEY
+        id: gate
+        env:
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+        run: echo "skip=${{ env.HAS_KEY == 'true' && 'false' || 'true' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve dataset
+        id: dataset
+        run: echo "name=${{ inputs.dataset || 'v1' }}" >> "$GITHUB_OUTPUT"
+
+      # ───── Run eval pass (only if secrets are configured) ─────
+      - name: Run eval pass
+        id: run
+        if: steps.gate.outputs.skip == 'false'
+        working-directory: apps/indexer
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -46,49 +95,78 @@ jobs:
           DATABASE_URL: ${{ secrets.EVAL_DATABASE_URL }}
           LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
           LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
-          BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+        # continue-on-error so a below-bar verdict still posts the comment
+        # before we mark the job failed in the final step.
+        continue-on-error: true
         run: |
           uv run python -m evals.cli run \
-            --dataset "${{ inputs.dataset || 'v1' }}" \
+            --dataset "${{ steps.dataset.outputs.name }}" \
+            --no-delta \
             --agent-version "${{ github.sha }}" \
-            --output ../../evals/results/${{ github.sha }}
+            --prompt-version "v0.2" \
+            --output-dir "${{ runner.temp }}/eval-out" \
+            --run-id "ci-${{ github.run_id }}-${{ steps.dataset.outputs.name }}"
 
-      - name: Upload eval results
-        if: always()
+      # ───── Upload the full run dir as an artifact for later inspection ─────
+      - name: Upload eval artifacts
+        if: steps.gate.outputs.skip == 'false'
         uses: actions/upload-artifact@v4
         with:
-          name: eval-results-${{ github.sha }}
-          path: evals/results/${{ github.sha }}/
+          name: eval-${{ github.run_id }}-${{ steps.dataset.outputs.name }}
+          path: ${{ runner.temp }}/eval-out
           retention-days: 30
+          if-no-files-found: warn
 
-      - name: Post results to PR
-        if: github.event_name == 'pull_request'
+      # ───── Render + post the PR comment ─────
+      - name: Render PR comment
+        id: render
+        if: steps.gate.outputs.skip == 'false' && github.event_name == 'pull_request'
+        run: |
+          summary_path="${{ runner.temp }}/eval-out/summary.json"
+          if [ ! -f "$summary_path" ]; then
+            echo "no summary.json produced; eval failed before writing one" >&2
+            exit 1
+          fi
+          python3 .github/scripts/render-eval-comment.py "$summary_path" > "${{ runner.temp }}/comment.md"
+
+      - name: Post comment
+        if: steps.gate.outputs.skip == 'false' && github.event_name == 'pull_request' && steps.render.outcome == 'success'
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-            const path = `evals/results/${{ github.sha }}/summary.json`;
-            if (!fs.existsSync(path)) {
-              core.setFailed("No summary.json produced");
-              return;
-            }
-            const summary = JSON.parse(fs.readFileSync(path, 'utf8'));
-            const body = `## Eval Results
-
-            | Metric | Value | Δ vs main |
-            |---|---|---|
-            | Judge score | ${summary.judge_score.toFixed(3)} | ${summary.delta?.judge_score ?? "—"} |
-            | Deterministic | ${summary.deterministic_score.toFixed(3)} | ${summary.delta?.deterministic_score ?? "—"} |
-            | False positives | ${summary.false_positives} | ${summary.delta?.false_positives ?? "—"} |
-            | P95 latency | ${summary.p95_latency_ms}ms | ${summary.delta?.p95_latency_ms ?? "—"} |
-            | Cost per review | $${summary.cost_per_review.toFixed(4)} | ${summary.delta?.cost_per_review ?? "—"} |
-
-            Verdict: **${summary.verdict}**
-
-            [Full trace on Braintrust](${summary.braintrust_url ?? "#"})`;
-            github.rest.issues.createComment({
+            const body = fs.readFileSync('${{ runner.temp }}/comment.md', 'utf8');
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body
+              body,
             });
+
+      - name: Post skip notice
+        if: steps.gate.outputs.skip == 'true' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body:
+                '⚠️ **Eval run skipped.** `ANTHROPIC_API_KEY` is not configured as ' +
+                'a repo secret. Configure it (plus optionally `VOYAGE_API_KEY`, ' +
+                '`COHERE_API_KEY`, `EVAL_DATABASE_URL`, `E2B_API_KEY`) under ' +
+                'Settings → Secrets and variables → Actions, then re-run this workflow.',
+            });
+
+      # ───── Fail the job if the eval came back below-bar ─────
+      # Done last so the comment posts first; CI status still reflects the
+      # eval outcome.
+      - name: Honor eval exit code
+        if: steps.gate.outputs.skip == 'false'
+        run: |
+          if [ "${{ steps.run.outcome }}" != "success" ]; then
+            echo "eval exited non-zero — see summary above"
+            exit 1
+          fi

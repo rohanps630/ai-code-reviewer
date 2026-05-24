@@ -713,3 +713,56 @@ get spent.** Run-time invocation against the real dataset
 will charge per the judge model's pricing (default
 `claude-sonnet-4-5`, ~$0.02 per example with caching).
 Build-time stays $0 because the tests inject stubs.
+
+### Phase 4.8 — CI workflow + PR comments — done
+
+- `.github/workflows/eval.yml` rewritten. The scaffolded version
+  from the agent-config bundle had several issues (wrong field
+  names on summary like `false_positives` / `cost_per_review` /
+  `braintrust_url` that the real RunSummary doesn't have; missing
+  TS build step so the agent-bridge couldn't find the compiled
+  @acr/agent dist; no gating on missing secrets). The new
+  version:
+  - Triggers on PRs that touch `packages/agent/`,
+    `apps/indexer/src/evals/`, `evals/datasets/`,
+    `scripts/agent-bridge.mjs`, the workflow itself, or the
+    renderer script. Plus `workflow_dispatch` for manual runs
+    with a dataset input.
+  - Skips forks (no secrets) gracefully via the
+    `head.repo.full_name` check; maintainers can still trigger
+    via workflow_dispatch.
+  - Concurrency group keyed on PR/branch so later pushes cancel
+    earlier in-flight evals (no paying for stale runs).
+  - Full TS toolchain setup (pnpm install + tsc --build) so the
+    bridge's `import("@acr/agent")` works.
+  - Python toolchain (uv sync).
+  - Gates the run step on `ANTHROPIC_API_KEY != ''`. If unset:
+    posts a "skipped, configure secrets" comment instead of
+    failing silently.
+  - `continue-on-error: true` on the eval run so a below-bar
+    verdict still gets a comment; a final step honors the exit
+    code so CI status reflects reality.
+  - Uploads the whole run dir (summary.json + raw traces) as
+    an artifact with 30-day retention.
+- `.github/scripts/render-eval-comment.py`: stdlib-only renderer
+  that turns a RunSummary JSON into GitHub-flavored Markdown.
+  Lives outside the indexer package because it's CI-only and we
+  don't want to drag pydantic etc. into the comment-rendering
+  path. Used by the workflow.
+- `apps/indexer/tests/test_render_eval_comment.py`: 9 smoke
+  tests covering the verdict emoji, run-id/dataset embedding,
+  metrics-table formatting, stable difficulty ordering
+  (easy → medium → hard regardless of dict order), graceful
+  handling of empty `by_difficulty`, delta block rendering with
+  up/down emoji, delta omission when absent, null-judge-score
+  handling in difficulty breakdowns. Loads the renderer via
+  importlib because the script path has a hyphen.
+- Delta comparison is **skipped in CI for now** (`--no-delta`).
+  Doing it properly requires the prior main run's summary to be
+  available — that's an artifact-shuffle problem worth a Phase 5
+  pass once we have history. The renderer already handles the
+  delta block when present (for `workflow_dispatch` invocations
+  pointing at a local summary).
+- Gates: pytest 158/158 (was 149 → +9 renderer tests), ruff +
+  format clean, biome clean, TS suite untouched (165). YAML
+  parses via pyyaml.
