@@ -333,3 +333,69 @@ immediately after Phase 1 closed.
   routes, no warnings), dev server boots and serves `/`,
   `/reviews`, `/reviews/new` at 200 with no `transpilePackages`
   declared.
+
+## Phase 4 takeover — 2026-05-24
+
+Picking up evals after Phases 2 + 3 shipped (commits 5f72f6a … ca2b80c).
+Phase 2 + 3 are intentionally not logged here in detail — the commits
+are authoritative and re-summarizing burns context that's better spent
+on Phase 4 itself.
+
+**Stack reminders relevant to Phase 4:**
+
+- Eval CLI is Python (`apps/indexer/src/evals/`) using uv + Pydantic v2.
+- Agent loop is TS (`packages/agent/src/`) and **protected**. The Python
+  runner must invoke it through its public `runReview` surface via a TS
+  bridge (task 4.6).
+- LLM-as-judge calls Anthropic Sonnet with prompt caching on the rubric;
+  judge is the only real-token-spending component during eval execution.
+- Stack-wide observability is Langfuse (per ADR-001), not Braintrust —
+  the existing `.github/workflows/eval.yml` mentions Braintrust and will
+  be reworked in 4.8.
+
+**Phase 4 plan (refined from the handoff):** 4.1 schema + 5 seed
+examples → 4.2 deterministic scorers → 4.3 LLM-as-judge → 4.4 summary
++ delta writer → 4.5 runner orchestrator → 4.6 TS bridge → 4.7 wire
+CLI → 4.8 rewrite eval.yml (drop Braintrust) → 4.9 first real run
+(cutover, ~$1–3) → 4.10 expand dataset to 30+ examples.
+
+### Task 4.1 — dataset schema + 5 seed examples — done
+
+- `apps/indexer/src/evals/schema.py` — Pydantic v2 models for the
+  golden-dataset schema documented in `docs/evals.md`:
+  - `GroundTruthFinding` (category/severity literals, summary, optional
+    location_hint + source_comment_url).
+  - `GroundTruth` (findings, expected_findings_count, false_positive_traps)
+    with an `@model_validator` enforcing `expected_findings_count ==
+    len(findings)`.
+  - `EvalExample` (id pattern `^[a-z0-9][a-z0-9-]*$`, optional
+    `HttpUrl`, title/diff, ground truth, difficulty enum, curation
+    metadata). All models `frozen=True` + `extra="forbid"`.
+  - `load_examples_jsonl(path)` returns the validated list; raises
+    `DuplicateExampleIdError` if two rows share an `id`; skips blank
+    and `#`-comment lines so JSONL files can self-document.
+- `evals/datasets/v1/examples.jsonl` — five hand-crafted **seed**
+  examples generated via a throwaway `temp/build_seed_dataset.py`
+  (gitignored). Coverage spans every field and the difficulty mix:
+  - `seed-py-null-deref` (easy, bug/major) — None-check removed.
+  - `seed-ts-off-by-one` (easy, bug/minor) — `<` → `<=` array overshoot.
+  - `seed-react-stale-closure` (medium, bug/major) — empty deps +
+    non-functional updater. Includes a false-positive trap.
+  - `seed-sql-injection` (medium, security/critical) — f-string SQL
+    interpolation of user input. Includes a false-positive trap.
+  - `seed-race-condition` (hard, bug/critical) — Mutex removed,
+    concurrent Go map writes. Includes a false-positive trap.
+  - `pr_url` is `null` for all seeds; real-PR examples land in 4.10.
+- `evals/datasets/v1/README.md` documents the seed-vs-real split, the
+  immutability contract, and the v1 difficulty-mix target.
+- `apps/indexer/tests/test_evals_schema.py` — 13 new tests covering
+  schema-level validation, the `expected_findings_count` invariant,
+  duplicate-id detection, comment-line skipping, and a guard
+  (`test_dataset_v1_loads`) that fails the build if the checked-in
+  JSONL stops parsing.
+- Gates: `uv run ruff check .` clean, `uv run ruff format --check .`
+  clean, `uv run pytest` 53/53 (was 40 before this task). TS gates
+  untouched: `pnpm lint` clean, `pnpm typecheck` clean, `pnpm test`
+  165/165.
+
+
