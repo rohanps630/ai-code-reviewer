@@ -9,6 +9,7 @@
 
 import { anthropic } from "./anthropic.js";
 import { google } from "./google.js";
+import { groq } from "./groq.js";
 import { openai } from "./openai.js";
 import type { ModelProvider } from "./types.js";
 
@@ -39,9 +40,10 @@ export function resolveModel(model: ModelLike): ModelProvider {
   if (/^claude-/.test(id)) return anthropic(id);
   if (/^(gpt-|o[1-4])/.test(id)) return openai(id);
   if (/^gemini-/.test(id)) return google(id);
+  if (/^(llama-|mixtral-|gemma-|whisper-)/.test(id)) return groq(id);
 
   throw new Error(
     `Cannot infer a provider for model "${id}". Pass a provider object ` +
-      `(e.g. anthropic("${id}"), openai("${id}"), google("${id}")) instead.`,
+      `(e.g. anthropic("${id}"), openai("${id}"), google("${id}"), groq("${id}")) instead.`,
   );
 }

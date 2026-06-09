@@ -63,9 +63,12 @@ async function main() {
     repoContext: envelope.repoContext,
   };
 
+  // why: scripts/ has no package.json so pnpm doesn't link workspace
+  // packages here; use a relative path to the compiled dist directly.
+  const agentDistPath = new URL("../packages/agent/dist/index.js", import.meta.url).href;
   let agent;
   try {
-    agent = await import("@acr/agent");
+    agent = await import(agentDistPath);
   } catch (err) {
     writeStdout({
       ok: false,

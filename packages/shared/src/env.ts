@@ -45,6 +45,7 @@ const serverSchema = z.object({
   ANTHROPIC_API_KEY: z.string().min(1),
   OPENAI_API_KEY: z.string().min(1).optional(),
   GOOGLE_API_KEY: z.string().min(1).optional(),
+  GROQ_API_KEY: z.string().min(1).optional(),
 
   // Embeddings & rerank
   VOYAGE_API_KEY: z.string().min(1).optional(),
@@ -129,6 +130,7 @@ export const serverEnv = parseOrPassthrough(serverSchema, {
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
+  GROQ_API_KEY: process.env.GROQ_API_KEY,
   VOYAGE_API_KEY: process.env.VOYAGE_API_KEY,
   COHERE_API_KEY: process.env.COHERE_API_KEY,
   GITHUB_APP_ID: process.env.GITHUB_APP_ID,

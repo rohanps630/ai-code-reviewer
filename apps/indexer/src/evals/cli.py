@@ -26,7 +26,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evals.bridge import BridgeError, SubprocessBridge
-from evals.judge import DEFAULT_JUDGE_MODEL
+from evals.judge import DEFAULT_JUDGE_MODEL as _ANTHROPIC_JUDGE_MODEL
+from evals.judge_groq import DEFAULT_GROQ_JUDGE_MODEL as _GROQ_JUDGE_MODEL
 from evals.runner import BridgeResult, run_eval
 from evals.schema import EvalExample, load_examples_jsonl
 from evals.scorers.types import PredictedReview
@@ -133,20 +134,35 @@ def _generate_run_id(dataset_version: str) -> str:
 
 
 def _default_anthropic_client() -> AnthropicClient:
-    """Construct a real Anthropic SDK client. Server-only; fails loud
-    if `ANTHROPIC_API_KEY` is missing."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise SystemExit(
-            "ANTHROPIC_API_KEY is not set. The judge needs it to score reviews.\n"
-            "Export it before running `evals.cli run`, or set --no-judge for a "
-            "deterministic-scorers-only dry run (not implemented in 4.7)."
+    """Return a judge client, preferring Anthropic and falling back to Groq.
+
+    Resolution order:
+      1. ANTHROPIC_API_KEY present → real Anthropic SDK client
+      2. GROQ_API_KEY present      → GroqJudgeAdapter (OpenAI-compatible)
+      3. Neither                   → SystemExit with a helpful message
+    """
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
+    if anthropic_key:
+        try:
+            from anthropic import Anthropic  # noqa: PLC0415  — lazy to keep tests fast
+        except ImportError as exc:
+            raise SystemExit("anthropic SDK not installed. Run `uv sync` to install it.") from exc
+        return Anthropic(api_key=anthropic_key)
+
+    groq_key = os.environ.get("GROQ_API_KEY")
+    if groq_key:
+        from evals.judge_groq import GroqJudgeAdapter  # noqa: PLC0415
+
+        print(  # noqa: T201
+            "[judge] ANTHROPIC_API_KEY not set — falling back to Groq judge.",
+            file=sys.stderr,
         )
-    try:
-        from anthropic import Anthropic  # noqa: PLC0415  — lazy to keep tests fast
-    except ImportError as exc:
-        raise SystemExit("anthropic SDK not installed. Run `uv sync` to install it.") from exc
-    return Anthropic(api_key=api_key)
+        return GroqJudgeAdapter(api_key=groq_key)
+
+    raise SystemExit(
+        "Neither ANTHROPIC_API_KEY nor GROQ_API_KEY is set.\n"
+        "Export one before running `evals.cli run`."
+    )
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -214,6 +230,11 @@ def run(
     # The factory indirection keeps the test path off the real SDK.
     judge_client_factory = anthropic_client_factory or _default_anthropic_client
     judge_client = judge_client_factory()
+
+    if args.judge_model is None:
+        args.judge_model = (
+            _ANTHROPIC_JUDGE_MODEL if os.environ.get("ANTHROPIC_API_KEY") else _GROQ_JUDGE_MODEL
+        )
 
     run_id = args.run_id or _generate_run_id(args.dataset)
     output_dir = Path(args.output_dir) if args.output_dir else Path(args.results_root) / run_id
@@ -330,8 +351,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_p.add_argument(
         "--judge-model",
-        default=DEFAULT_JUDGE_MODEL,
-        help=f"Model the LLM judge uses. Default: {DEFAULT_JUDGE_MODEL}.",
+        default=None,
+        help=(
+            "Model the LLM judge uses. Defaults to claude-sonnet-4-5 when "
+            "ANTHROPIC_API_KEY is set, or llama-3.3-70b-versatile when "
+            "falling back to Groq."
+        ),
     )
     run_p.add_argument(
         "--agent-version",

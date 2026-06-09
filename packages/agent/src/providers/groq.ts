@@ -1,38 +1,40 @@
 /**
- * OpenAI adapter for the `ModelProvider` seam.
+ * Groq adapter for the `ModelProvider` seam.
  *
- * Translates neutral messages/tools ↔ the OpenAI Chat Completions API.
- * Wire-format types and translation live in `openai-compat.ts`; this
- * file owns only the OpenAI-specific client construction and key lookup.
+ * Groq exposes an OpenAI-compatible Chat Completions API. This adapter
+ * builds directly on the shared `openai-compat` layer — it does NOT
+ * import the OpenAI adapter, so OpenAI-specific changes can never
+ * silently affect Groq.
+ *
+ * Usage:
+ *   new Agent({ model: groq("llama-3.1-8b-instant") })
+ *   new Agent({ model: "llama-3.1-8b-instant" })  // auto-routed via registry
  */
 
 import type { OAIClientLike } from "./openai-compat.js";
 import { parseOAICompletion, toOAIMessages } from "./openai-compat.js";
 import type { ModelProvider, ModelRequest, ModelResponse } from "./types.js";
-import { ProviderError } from "./types.js";
 
-const PROVIDER = "openai";
+const PROVIDER = "groq";
+const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
 
-/** Alias so external callers keep their existing import. */
-export type { OAIClientLike as OpenAIClientLike };
-
-export type OpenAIProviderOptions = {
+export type GroqProviderOptions = {
   readonly client?: OAIClientLike;
-  /** Falls back to `serverEnv.OPENAI_API_KEY`. */
+  /** Falls back to `serverEnv.GROQ_API_KEY`. */
   readonly apiKey?: string;
   readonly maxTokens?: number;
 };
 
-/** Construct an OpenAI-backed `ModelProvider`. */
-export function openai(modelId: string, options: OpenAIProviderOptions = {}): ModelProvider {
-  let client = options.client ?? null;
+/** Construct a Groq-backed `ModelProvider`. */
+export function groq(modelId: string, options: GroqProviderOptions = {}): ModelProvider {
+  let client: OAIClientLike | null = options.client ?? null;
 
   async function getClient(): Promise<OAIClientLike> {
     if (client) return client;
     const { default: OpenAI } = await import("openai");
     const apiKey = options.apiKey ?? (await resolveApiKey());
-    // why: the SDK client structurally satisfies the narrow surface we call
-    client = new OpenAI({ apiKey }) as unknown as OAIClientLike;
+    // why: Groq is OpenAI-compatible — same SDK, different baseURL
+    client = new OpenAI({ apiKey, baseURL: GROQ_BASE_URL }) as unknown as OAIClientLike;
     return client;
   }
 
@@ -60,8 +62,8 @@ export function openai(modelId: string, options: OpenAIProviderOptions = {}): Mo
 
 async function resolveApiKey(): Promise<string> {
   const { serverEnv } = await import("@acr/shared/env");
-  if (!serverEnv.OPENAI_API_KEY) {
-    throw new ProviderError(PROVIDER, "OPENAI_API_KEY is not set and no client was injected");
+  if (!serverEnv.GROQ_API_KEY) {
+    throw new Error("[groq] GROQ_API_KEY is not set and no client was injected");
   }
-  return serverEnv.OPENAI_API_KEY;
+  return serverEnv.GROQ_API_KEY;
 }

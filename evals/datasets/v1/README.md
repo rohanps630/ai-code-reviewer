@@ -14,14 +14,10 @@ metadata.
 
 ## Current contents
 
-10 hand-crafted **seed examples** that anchor the schema and exercise
-every category the agent reviews for. Each `seed-*` example is
-synthetic: the diff is a minimal, realistic snippet rather than a copy
-of a real PR, and `pr_url` is `null`. This is deliberate — the seeds
-prove the schema, scorers, and harness end to end without depending on
-us being able to fetch real PR diffs at authoring time. Real public-PR
-examples (with `pr_url` populated) will be appended via the
-`/new-eval` workflow as part of ongoing curation.
+30 synthetic seed examples covering every category and difficulty the
+agent reviews for. Each `seed-*` example uses a minimal realistic diff
+and `pr_url: null`. Real public-PR examples (with `pr_url` populated)
+can be appended via the `/new-eval` workflow as ongoing curation.
 
 | id | difficulty | category / severity | notes |
 |---|---|---|---|
@@ -30,26 +26,40 @@ examples (with `pr_url` populated) will be appended via the
 | `seed-ts-swallowed-exception` | easy | bug / minor | try/catch swallows error, returns null |
 | `seed-ts-broken-type-cast` | easy | bug / major | `as any` papers over real shape mismatch |
 | `seed-py-leaked-secret` | easy | security / critical | hardcoded Anthropic API key |
+| `seed-py-mutable-default` | easy | bug / major | mutable default arg shared across calls |
+| `seed-ts-no-await` | easy | bug / major | missing await; write fires-and-forgets |
+| `seed-py-file-not-closed` | easy | bug / minor | file handle leaks on exception path |
+| `seed-ts-optional-chain` | easy | bug / major | missing `?.` causes TypeError on null |
+| `seed-py-hardcoded-creds` | easy | security / critical | hardcoded DB password in source |
+| `seed-ts-nan-check` | easy | bug / minor | `=== NaN` always false; NaN passes check |
+| `seed-py-bare-except` | easy | bug / minor | bare except masks KeyboardInterrupt |
+| `seed-ts-state-mutation` | easy | bug / major | React state array mutated in place |
+| `seed-go-unchecked-error` | easy | bug / major | os.WriteFile error silently discarded |
+| `seed-py-int-conversion` | easy | logic / minor | unguarded int() raises 500 on bad input |
 | `seed-react-stale-closure` | medium | bug / major | empty deps + non-functional updater |
 | `seed-sql-injection` | medium | security / critical | f-string interpolation of user input |
 | `seed-py-quadratic-loop` | medium | perf / major | dict lookup → linear scan (O(n+m) → O(n*m)) |
+| `seed-ts-missing-cleanup` | medium | perf / major | resize listener never removed; leaks |
+| `seed-py-timing-attack` | medium | security / major | `==` on tokens enables timing attacks |
+| `seed-ts-n-plus-one` | medium | perf / major | N+1 DB query inside async loop |
+| `seed-py-xml-injection` | medium | security / major | stdlib XML vulnerable to XXE |
+| `seed-go-goroutine-leak` | medium | perf / major | ctx.Done removed; goroutine leaks |
+| `seed-ts-csrf-get` | medium | security / major | state change on GET endpoint; CSRF-able |
+| `seed-py-reentrant-lock` | medium | bug / critical | Lock → RLock downgrade causes deadlock |
+| `seed-ts-stale-cache` | medium | logic / major | cache TTL removed; stale config forever |
 | `seed-race-condition` | hard | bug / critical | removed Mutex; concurrent map writes |
 | `seed-ts-regex-redos` | hard | perf / critical | nested-quantifier regex; ReDoS vector |
-
-Six of the ten include a `false_positive_traps` entry so the
-deterministic scorer has something non-trivial to evaluate against.
+| `seed-ts-toctou` | hard | security / critical | access()+write() TOCTOU race on uploads |
+| `seed-py-float-accumulation` | hard | bug / major | float accumulation in financial ledger |
 
 ## Category coverage
 
-Every category the agent's `Finding` schema declares is now exercised
-at least once:
-
 | category | example count |
 |---|---|
-| bug | 6 |
-| security | 2 |
-| perf | 2 |
-| logic | 0 (subsumed by bug for now) |
+| bug | 17 |
+| security | 7 |
+| perf | 5 |
+| logic | 1 |
 | style | 0 (intentionally — low-signal for portfolio evals) |
 
 ## Difficulty mix
@@ -58,11 +68,10 @@ Target (per `docs/evals.md`): **50 / 35 / 15** (easy / medium / hard).
 
 | | easy | medium | hard | total |
 |---|---|---|---|---|
-| Seeds | 5 | 3 | 2 | 10 |
-| v1 target | ~15 | ~11 | ~4 | 30+ |
+| Current | 15 | 11 | 4 | **30** |
+| Target | ~15 | ~11 | ~4 | 30+ |
 
-Current mix: 50 / 30 / 20 — close to target. Future real-PR additions
-should lean medium to keep the ratios on plan.
+Mix: **50 / 37 / 13** — on target.
 
 ## Immutability
 

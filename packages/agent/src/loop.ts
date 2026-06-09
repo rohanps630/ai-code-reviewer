@@ -5,13 +5,13 @@
  *
  * ReAct-style loop:
  *
- *   user(diff) ─▶ Claude.stream({ tools: [search_code, read_file,
- *                                          find_references, submit_review] })
+ *   user(diff) ─▶ provider.generate({ tools: [search_code, read_file,
+ *                                              find_references, submit_review] })
  *                       │
  *                       ▼
- *                 emit text deltas as ReviewChunk.text events
+ *                 emit text chunk as ReviewChunk.text event
  *                       │
- *                       ▼ finalMessage()
+ *                       ▼ response.toolCalls
  *                       │
  *               ┌───────┴────────────┐
  *               │                    │
@@ -20,7 +20,7 @@
  *               ▼                    ▼
  *          emit `final`        emit tool_call/tool_result
  *          stop loop           events; append tool_result
- *                              content; loop again
+ *                              messages; loop again
  *
  * Termination:
  *   - submit_review tool called  → success
@@ -29,11 +29,15 @@
  *   - Model produced no tools    → throw (it should have at minimum
  *                                  called submit_review)
  *
+ * Provider:
+ *   Any ModelProvider (Anthropic, OpenAI, Groq, etc.) can be injected
+ *   via RunReviewDeps.provider. defaultDeps() resolves from env:
+ *   ANTHROPIC_API_KEY → anthropic, GROQ_API_KEY → groq.
+ *
  * Deps:
- *   `anthropic.messages.stream`, `retriever.search`, and
- *   `executor.execute(sql)` are all injectable. The env-backed
- *   default builds them from `@acr/shared/env` + `@acr/db/client` +
- *   the hybrid retriever's `searchCode` factory.
+ *   `provider`, `retriever`, and `executor` are all injectable. The
+ *   env-backed default builds them from `@acr/shared/env` +
+ *   `@acr/db/client` + the hybrid retriever's `searchCode` factory.
  *
  * What the loop does NOT own:
  *   - Persistence — the route updates the reviews row from the
@@ -42,12 +46,10 @@
  *     The loop just emits semantic events.
  */
 
-import Anthropic from "@anthropic-ai/sdk";
-
 import { CURRENT_SYSTEM_PROMPT } from "./prompts/index.js";
+import type { ModelMessage, ModelProvider, ToolSpec } from "./providers/index.js";
 import { HybridRetriever, type SearchResult } from "./retrieval/index.js";
 import {
-  type AnthropicTool,
   type JsonSchemaObject,
   type RunTestsSandboxFactory,
   buildToolRegistry,
@@ -57,38 +59,68 @@ import {
   createSearchCodeTool,
   defaultE2BFactory,
   executeToolCall,
-  toAnthropicTools,
 } from "./tools/index.js";
 import type { Finding, ReviewChunk, ReviewInput, ReviewOutput } from "./types.js";
 
 // ────────────────────────────────────────────────────────────────────
-// Configuration — defaults; deps can override per-call later
+// Configuration
 // ────────────────────────────────────────────────────────────────────
 
 const MAX_ITERATIONS = 10;
 const COST_CAP_USD = 0.5;
 const DEFAULT_MAX_TOKENS = 4096;
 
-const MODEL_IDS = {
-  haiku: "claude-haiku-4-5",
-  sonnet: "claude-sonnet-4-7",
-  opus: "claude-opus-4-7",
+type Tier = "haiku" | "sonnet" | "opus";
+
+/** Model IDs per provider + tier. Add a row when onboarding a new
+ *  provider; defaultDeps() picks the right column from env. */
+const MODEL_TIERS: Record<string, Record<Tier, string>> = {
+  anthropic: {
+    haiku: "claude-haiku-4-5",
+    sonnet: "claude-sonnet-4-7",
+    opus: "claude-opus-4-7",
+  },
+  groq: {
+    haiku: "llama-3.1-8b-instant",
+    sonnet: "llama-3.3-70b-versatile",
+    opus: "llama-3.3-70b-versatile",
+  },
+  openai: {
+    haiku: "gpt-4o-mini",
+    sonnet: "gpt-4o",
+    opus: "gpt-4o",
+  },
+  google: {
+    haiku: "gemini-2.0-flash-lite",
+    sonnet: "gemini-2.5-flash",
+    opus: "gemini-2.5-pro",
+  },
 } as const;
 
-/** Per-million-token pricing (USD). Rough 2026 figures; bump these
- *  alongside an ADR if Anthropic changes prices. Used only for the
- *  cost cap — Langfuse handles real cost accounting downstream. */
-const PRICING_PER_MTOK: Record<keyof typeof MODEL_IDS, { input: number; output: number }> = {
-  haiku: { input: 1.0, output: 5.0 },
-  sonnet: { input: 3.0, output: 15.0 },
-  opus: { input: 15.0, output: 75.0 },
+function resolveModelId(providerName: string, tier: string): string {
+  const tiers = MODEL_TIERS[providerName];
+  const isTier = (t: string): t is Tier => t === "haiku" || t === "sonnet" || t === "opus";
+  const safeTier: Tier = isTier(tier) ? tier : "sonnet";
+  return tiers?.[safeTier] ?? "sonnet";
+}
+
+/** Per-million-token pricing (USD). Used only for the cost cap —
+ *  Langfuse handles real cost accounting downstream. */
+const PRICING_USD_PER_MTOK: Record<string, { input: number; output: number }> = {
+  "claude-haiku-4-5": { input: 1.0, output: 5.0 },
+  "claude-sonnet-4-7": { input: 3.0, output: 15.0 },
+  "claude-opus-4-7": { input: 15.0, output: 75.0 },
+  "llama-3.1-8b-instant": { input: 0.05, output: 0.08 },
+  "llama-3.3-70b-versatile": { input: 0.59, output: 0.79 },
+  "gpt-4o-mini": { input: 0.15, output: 0.6 },
+  "gpt-4o": { input: 2.5, output: 10.0 },
+  "gemini-2.5-flash": { input: 0.15, output: 0.6 },
+  "gemini-2.5-pro": { input: 1.25, output: 10.0 },
 };
 
 // ────────────────────────────────────────────────────────────────────
 // Dep contracts
 // ────────────────────────────────────────────────────────────────────
-
-export type AnthropicStreamFn = Anthropic["messages"]["stream"];
 
 export interface RetrieverLike {
   search: (query: string, options?: { repoId?: string; limit?: number }) => Promise<SearchResult[]>;
@@ -99,12 +131,12 @@ export interface SqlExecutorLike {
 }
 
 export type RunReviewDeps = {
-  stream: AnthropicStreamFn;
+  /** Any ModelProvider — Anthropic, Groq, OpenAI, Google, or custom. */
+  provider: ModelProvider;
   retriever: RetrieverLike;
   executor: SqlExecutorLike;
   /** Optional E2B-style sandbox factory for the run_tests tool.
-   *  When omitted, run_tests is simply not registered — the model
-   *  loses access to it but the rest of the loop still works. */
+   *  When omitted, run_tests is simply not registered. */
   sandboxFactory?: RunTestsSandboxFactory;
   /** Optional overrides — handy for evals + tests. */
   maxIterations?: number;
@@ -112,9 +144,8 @@ export type RunReviewDeps = {
 };
 
 // ────────────────────────────────────────────────────────────────────
-// submit_review sentinel — defined here (not in tools/) because it's
-// tightly coupled to the loop's termination logic, not a real
-// executable tool.
+// submit_review sentinel — tightly coupled to the loop's termination
+// logic, not a real executable tool.
 // ────────────────────────────────────────────────────────────────────
 
 const SUBMIT_REVIEW_NAME = "submit_review";
@@ -148,13 +179,13 @@ const SUBMIT_REVIEW_INPUT_SCHEMA: JsonSchemaObject = {
   },
 };
 
-const SUBMIT_REVIEW_TOOL: AnthropicTool = {
+const SUBMIT_REVIEW_TOOL: ToolSpec = {
   name: SUBMIT_REVIEW_NAME,
   description:
     "Submit the final structured review and stop. Call this exactly once " +
     "at the end of your reasoning, after you've gathered enough context " +
     "via the other tools. Do not produce text after calling this.",
-  input_schema: SUBMIT_REVIEW_INPUT_SCHEMA,
+  inputSchema: SUBMIT_REVIEW_INPUT_SCHEMA,
 };
 
 // ────────────────────────────────────────────────────────────────────
@@ -165,7 +196,7 @@ export async function* runReview(
   input: ReviewInput,
   deps?: RunReviewDeps,
 ): AsyncGenerator<ReviewChunk, void, void> {
-  const resolved = deps ?? (await defaultDeps());
+  const resolved = deps ?? (await defaultDeps(input.model ?? "sonnet"));
   yield* runReviewWithDeps(input, resolved);
 }
 
@@ -175,12 +206,8 @@ async function* runReviewWithDeps(
 ): AsyncGenerator<ReviewChunk, void, void> {
   const maxIter = deps.maxIterations ?? MAX_ITERATIONS;
   const costCap = deps.costCapUsd ?? COST_CAP_USD;
-  const modelLabel = input.model ?? "sonnet";
-  const modelId = MODEL_IDS[modelLabel];
 
-  // Build per-call tool registry — keeps deps explicit and tests easy.
-  // Cast widens the concrete Tool<TInput,TOutput> generics; TS doesn't
-  // do this automatically because Tool is contravariant in its input.
+  // Build per-call tool registry.
   type WidenedTool = Parameters<typeof buildToolRegistry>[0][number];
   const tools: WidenedTool[] = [
     createSearchCodeTool(deps.retriever) as unknown as WidenedTool,
@@ -191,87 +218,75 @@ async function* runReviewWithDeps(
     tools.push(createRunTestsTool(deps.sandboxFactory) as unknown as WidenedTool);
   }
   const registry = buildToolRegistry(tools);
-  const anthropicTools: AnthropicTool[] = [...toAnthropicTools(registry), SUBMIT_REVIEW_TOOL];
 
-  const messages: Anthropic.MessageParam[] = [
-    { role: "user", content: buildOpeningMessage(input) },
+  const toolSpecs: ToolSpec[] = [
+    ...[...registry.values()].map((t) => ({
+      name: t.name,
+      description: t.description,
+      inputSchema: t.inputSchema,
+    })),
+    SUBMIT_REVIEW_TOOL,
   ];
+
+  const messages: ModelMessage[] = [{ role: "user", content: buildOpeningMessage(input) }];
 
   let totalCostUsd = 0;
   let iteration = 0;
 
   yield {
     type: "status",
-    message: `Agent loop starting (model=${modelLabel}, max_iter=${maxIter}, cap=$${costCap})`,
+    message: `Agent loop starting (provider=${deps.provider.provider}, model=${deps.provider.modelId}, max_iter=${maxIter}, cap=$${costCap})`,
   };
 
   while (iteration < maxIter) {
     iteration++;
     yield { type: "status", message: `Iteration ${iteration}/${maxIter}...` };
 
-    const stream = deps.stream({
-      model: modelId,
-      max_tokens: DEFAULT_MAX_TOKENS,
+    const response = await deps.provider.generate({
       system: CURRENT_SYSTEM_PROMPT,
-      tools: anthropicTools as Anthropic.Tool[],
       messages,
+      tools: toolSpecs,
+      maxTokens: DEFAULT_MAX_TOKENS,
     });
 
-    // Stream text deltas as ReviewChunks; tool-call args (input_json_delta)
-    // are structured output we don't expose mid-stream.
-    for await (const event of stream) {
-      if (
-        event.type === "content_block_delta" &&
-        event.delta.type === "text_delta" &&
-        event.delta.text
-      ) {
-        yield { type: "text", delta: event.delta.text };
-      }
+    if (response.text) {
+      yield { type: "text", delta: response.text };
     }
 
-    const message = await stream.finalMessage();
-    totalCostUsd += costOfMessage(modelLabel, message);
+    const pricing = PRICING_USD_PER_MTOK[deps.provider.modelId];
+    if (pricing) {
+      totalCostUsd +=
+        (response.usage.inputTokens / 1_000_000) * pricing.input +
+        (response.usage.outputTokens / 1_000_000) * pricing.output;
+    }
 
-    // Persist the model's turn in conversation history so the next
-    // iteration sees it. The SDK's content blocks are the right shape
-    // to ship straight back as an assistant param.
     messages.push({
       role: "assistant",
-      content: message.content as Anthropic.ContentBlockParam[],
+      content: response.text,
+      toolCalls: [...response.toolCalls],
     });
 
-    // Did the model submit a review? If so, we're done.
-    const submitBlock = message.content.find(
-      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use" && b.name === SUBMIT_REVIEW_NAME,
-    );
-    if (submitBlock) {
-      const output = validateReviewOutput(submitBlock.input);
+    // Did the model submit a review?
+    const submitCall = response.toolCalls.find((tc) => tc.name === SUBMIT_REVIEW_NAME);
+    if (submitCall) {
+      const output = validateReviewOutput(submitCall.input);
       yield { type: "final", output };
       return;
     }
 
-    // Other tool calls? Execute them, ship results back, loop.
-    const toolUses = message.content.filter(
-      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use" && b.name !== SUBMIT_REVIEW_NAME,
-    );
+    const toolUses = response.toolCalls.filter((tc) => tc.name !== SUBMIT_REVIEW_NAME);
 
     if (toolUses.length === 0) {
       throw new Error("Model ended turn without calling submit_review or any other tool");
     }
 
-    // Emit tool_call events up front so the UI can show "Searching
-    // for X..." live while we execute.
     for (const call of toolUses) {
       yield { type: "tool_call", name: call.name, input: call.input };
     }
 
     const results = await Promise.all(
       toolUses.map((call) =>
-        executeToolCall(registry, {
-          id: call.id,
-          name: call.name,
-          input: call.input,
-        }),
+        executeToolCall(registry, { id: call.id, name: call.name, input: call.input }),
       ),
     );
 
@@ -283,15 +298,16 @@ async function* runReviewWithDeps(
       };
     }
 
-    messages.push({
-      role: "user",
-      content: results.map((r) => ({
-        type: "tool_result" as const,
-        tool_use_id: r.id,
-        content: r.ok ? JSON.stringify(r.output) : r.error,
-        is_error: !r.ok,
-      })),
-    });
+    // Tool results are individual messages in the neutral format.
+    for (const result of results) {
+      messages.push({
+        role: "tool",
+        toolCallId: result.id,
+        toolName: result.name,
+        content: result.ok ? JSON.stringify(result.output) : result.error,
+        isError: !result.ok,
+      });
+    }
 
     if (totalCostUsd >= costCap) {
       throw new Error(
@@ -309,34 +325,14 @@ async function* runReviewWithDeps(
 // Helpers
 // ────────────────────────────────────────────────────────────────────
 
-export function buildOpeningMessage(input: ReviewInput): Anthropic.ContentBlockParam[] {
+export function buildOpeningMessage(input: ReviewInput): string {
   const repoCtx = input.repoContext
-    ? `\nRepo: ${input.repoContext.owner}/${input.repoContext.repo} ` +
-      `(branch: ${input.repoContext.defaultBranch})\n`
+    ? `\nRepo: ${input.repoContext.owner}/${input.repoContext.repo} (branch: ${input.repoContext.defaultBranch})\n`
     : "";
-  return [
-    {
-      type: "text",
-      text: `Review the following diff. Use the available tools to gather context as needed. When you have enough information, call \`submit_review\` with your final findings.\n${repoCtx}\n<diff>\n${input.diff}\n</diff>`,
-    },
-  ];
+  return `Review the following diff. Use the available tools to gather context as needed. When you have enough information, call \`submit_review\` with your final findings.\n${repoCtx}\n<diff>\n${input.diff}\n</diff>`;
 }
 
-export function costOfMessage(model: keyof typeof MODEL_IDS, message: Anthropic.Message): number {
-  const usage = message.usage;
-  const pricing = PRICING_PER_MTOK[model];
-  const inputUsd = (usage.input_tokens / 1_000_000) * pricing.input;
-  const outputUsd = (usage.output_tokens / 1_000_000) * pricing.output;
-  // Cache-read and cache-creation tokens (when prompt caching kicks in)
-  // are priced differently. v1 ignores them; cost cap is conservative
-  // enough that overestimating uncached input is safe.
-  return inputUsd + outputUsd;
-}
-
-/** Light runtime guard on the model's submit_review input. The tool's
- *  JSON Schema enforces shape at the Anthropic side; this is belt to
- *  that suspenders so structural surprises fail loud before they hit
- *  downstream code. */
+/** Light runtime guard on the model's submit_review input. */
 export function validateReviewOutput(raw: unknown): ReviewOutput {
   if (!raw || typeof raw !== "object") {
     throw new Error("submit_review returned a non-object input");
@@ -364,16 +360,32 @@ export function validateReviewOutput(raw: unknown): ReviewOutput {
 
 let cachedDeps: RunReviewDeps | null = null;
 
-async function defaultDeps(): Promise<RunReviewDeps> {
+async function defaultDeps(tier: string): Promise<RunReviewDeps> {
   if (cachedDeps) return cachedDeps;
 
   const [{ serverEnv }, { db }] = await Promise.all([
     import("@acr/shared/env"),
     import("@acr/db/client"),
   ]);
-  if (!serverEnv.ANTHROPIC_API_KEY) {
-    throw new Error("ANTHROPIC_API_KEY is not set — required for runReview()");
+
+  const { anthropic, groq, openai, google } = await import("./providers/index.js");
+
+  let provider: ModelProvider;
+
+  if (serverEnv.ANTHROPIC_API_KEY) {
+    provider = anthropic(resolveModelId("anthropic", tier));
+  } else if (serverEnv.GROQ_API_KEY) {
+    provider = groq(resolveModelId("groq", tier));
+  } else if (serverEnv.OPENAI_API_KEY) {
+    provider = openai(resolveModelId("openai", tier));
+  } else if (serverEnv.GOOGLE_API_KEY) {
+    provider = google(resolveModelId("google", tier));
+  } else {
+    throw new Error(
+      "No LLM provider configured. Set one of: ANTHROPIC_API_KEY, GROQ_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY.",
+    );
   }
+
   if (!serverEnv.VOYAGE_API_KEY) {
     throw new Error("VOYAGE_API_KEY is not set — required for retrieval");
   }
@@ -389,15 +401,12 @@ async function defaultDeps(): Promise<RunReviewDeps> {
     reranker,
   });
 
-  const anthropic = new Anthropic({ apiKey: serverEnv.ANTHROPIC_API_KEY });
-  // E2B is optional — missing the key just disables run_tests rather
-  // than failing the whole loop.
   const sandboxFactory: RunTestsSandboxFactory | undefined = serverEnv.E2B_API_KEY
     ? await defaultE2BFactory(serverEnv.E2B_API_KEY)
     : undefined;
+
   cachedDeps = {
-    stream: ((args: Anthropic.MessageStreamParams) =>
-      anthropic.messages.stream(args)) as AnthropicStreamFn,
+    provider,
     retriever,
     executor: db as unknown as SqlExecutorLike,
     sandboxFactory,

@@ -26,5 +26,8 @@ export type { OpenAIClientLike, OpenAIProviderOptions } from "./openai.js";
 export { google } from "./google.js";
 export type { GoogleClientLike, GoogleProviderOptions } from "./google.js";
 
+export { groq } from "./groq.js";
+export type { GroqProviderOptions } from "./groq.js";
+
 export { resolveModel } from "./registry.js";
 export type { ModelLike } from "./registry.js";
