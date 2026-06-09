@@ -143,7 +143,17 @@ faithful index. See § 6 → "Interactive CLI".
 - Validate every external input through Zod (HTTP bodies, env, LLM outputs).
 - Named exports only. No default exports.
 - Absolute imports via `@/` alias. No `../../../`.
-- Functions over classes unless state is essential.
+- Functions over classes unless state is essential (e.g., agent instance maintaining configuration and loop state).
+- Define agents declaratively using the custom `Agent` class to keep the orchestrator logic cleanly encapsulated:
+  ```typescript
+  const agent = new Agent({
+    model: "claude-3-5-sonnet-20241022",
+    tools: [searchCode, readFile],
+    systemPrompt: "..."
+  });
+  const response = await agent.run("instruction");
+  ```
+
 
 ### Python
 - Type hints on every function signature.

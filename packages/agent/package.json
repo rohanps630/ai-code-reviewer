@@ -26,6 +26,8 @@
     "@acr/shared": "workspace:*",
     "@anthropic-ai/sdk": "^0.96.0",
     "@e2b/code-interpreter": "^2.5.0",
+    "@google/genai": "^1.0.0",
+    "openai": "^4.77.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
