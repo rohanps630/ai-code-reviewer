@@ -81,8 +81,8 @@ pnpm cli
 
 The menu lives in [`scripts/cli.mjs`](./scripts/cli.mjs) and is
 maintained alongside the code: any new top-level command should be
-added to the menu in the same commit (see AGENTS.md § 6 → Interactive
-CLI).
+added to the menu in the same commit (see `docs/guidelines.md` § 6 →
+Interactive CLI).
 
 ### Run an eval
 
@@ -93,33 +93,39 @@ uv run python -m evals.cli run --dataset v1
 
 ## Documentation
 
+`docs/` is the shared **agent-context hub** — all maintained guidance lives there:
+
+- [`docs/guidelines.md`](./docs/guidelines.md) — **Canonical** project guidelines (stack, structure, conventions, "never do" rules)
 - [`docs/architecture.md`](./docs/architecture.md) — Full architecture
 - [`docs/coding-style.md`](./docs/coding-style.md) — Code conventions
 - [`docs/roadmap.md`](./docs/roadmap.md) — 6-phase build plan
 - [`docs/prompts.md`](./docs/prompts.md) — Prompt change log
 - [`docs/evals.md`](./docs/evals.md) — Eval methodology
 - [`docs/adr/`](./docs/adr/) — Architecture decision records
-- [`AGENTS.md`](./AGENTS.md) — Instructions for AI coding tools
+- [`AGENTS.md`](./AGENTS.md) — Root pointer every AI tool resolves to → `docs/guidelines.md`
 
 ## Working with AI coding tools
 
-This repo is set up so every AI coding tool reads the same conventions
-from one place: **[`AGENTS.md`](./AGENTS.md)** at the repo root. The
-tool-specific files (`CLAUDE.md`, `.cursorrules`, `.kiro/steering/*.md`)
-are thin shims that re-point to it — none of them carry unique guidance.
+This repo is set up so every AI coding tool reads the same conventions from one place:
+**[`docs/guidelines.md`](./docs/guidelines.md)**. Tools reach it through a single chain —
+tool shim → [`AGENTS.md`](./AGENTS.md) (root pointer) → `docs/guidelines.md`. None of the
+pointer files carry unique guidance.
 
 | Tool | Discovery file → |
 |---|---|
 | Claude Code | `CLAUDE.md` → `@AGENTS.md` |
-| OpenAI Codex CLI | `AGENTS.md` (native) |
-| Cursor | `.cursorrules` → AGENTS.md |
-| Kiro | `.kiro/steering/*.md` → `#[[file:AGENTS.md]]` |
-| Aider / others | Read `AGENTS.md` directly |
+| OpenAI Codex CLI / Amp / opencode / Zed / Windsurf / Roo / Junie / Antigravity | `AGENTS.md` (native) |
+| Cursor | `.cursorrules` + `.cursor/rules/agents.mdc` → `AGENTS.md` |
+| Kiro | `.kiro/steering/agents.md` → `#[[file:docs/guidelines.md]]` |
+| Gemini CLI / Antigravity | `GEMINI.md` → `AGENTS.md` |
+| GitHub Copilot | `.github/copilot-instructions.md` → `AGENTS.md` |
+| Cline | `.clinerules/01-agents.md` → `AGENTS.md` |
+| Aider | `CONVENTIONS.md` → `AGENTS.md` |
 
 To add support for another agent, create its expected file at its
 expected location, point it at `AGENTS.md`, and add a row to the table
-in `AGENTS.md` § 9. See "Agent context — single source of truth" there
-for the full policy.
+in `docs/guidelines.md` § 9. See "Agent context — single source of truth"
+there for the full policy.
 
 ## License
 

@@ -1,0 +1,17 @@
+---
+description: Project conventions — points to AGENTS.md (single source of truth)
+alwaysApply: true
+---
+
+Read `AGENTS.md` at the repository root before doing anything else. It is the single source
+of truth for this project: stack choices, folder structure, naming conventions, commit
+format, and the explicit "never do" rules. Every constraint there applies.
+
+Protected paths — never edit without an explicit human ask:
+`packages/agent/src/loop.ts`, `packages/agent/src/prompts/`, `packages/agent/src/retrieval/`.
+
+If a request would require deviating from `AGENTS.md` (introducing a new framework, modifying
+protected paths, or bypassing prompt versioning), stop and ask the human first.
+
+(This is the modern Cursor rules format; the legacy `.cursorrules` file points here too. Do
+not add unique guidance — it belongs in `AGENTS.md`.)

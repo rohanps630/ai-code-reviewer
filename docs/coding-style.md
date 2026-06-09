@@ -1,6 +1,6 @@
 # Coding Style
 
-> Style rules for this project. Enforced by Biome (TS), Ruff (Python), and code review. AGENTS.md § 6 is the short version; this is the long version.
+> Style rules for this project. Enforced by Biome (TS), Ruff (Python), and code review. `docs/guidelines.md` § 6 is the short version; this is the long version.
 
 ## TypeScript
 

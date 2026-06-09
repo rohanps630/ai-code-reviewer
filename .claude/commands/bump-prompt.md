@@ -9,7 +9,7 @@ argument-hint: <minor|major> [summary of change]
 
 ## Steps
 
-1. **Read AGENTS.md § 6 (Conventions / Prompts) and docs/prompts.md** to confirm the workflow.
+1. **Read `docs/guidelines.md` § 6 (Conventions / Prompts) and docs/prompts.md** to confirm the workflow.
 
 2. **Identify current version**
    - Read `packages/agent/src/prompts/index.ts` to find the active version string (e.g. `"v0.3"`)

@@ -12,7 +12,7 @@ Your job: take a real GitHub PR URL, extract the diff and the substantive review
 1. **Read context**
    - Read `docs/evals.md` to understand the dataset format
    - Read `evals/datasets/v1/examples.jsonl` to see existing examples
-   - Read AGENTS.md § 7 — note the rule about not asserting on LLM content directly
+   - Read `docs/guidelines.md` § 7 — note the rule about not asserting on LLM content directly
 
 2. **Fetch the PR**
    - Use GitHub API or the URL provided in $ARGUMENTS

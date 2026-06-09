@@ -5,12 +5,12 @@ argument-hint: <tool-name>
 
 # New agent tool: $ARGUMENTS
 
-⚠️ **Tool implementations under `packages/agent/src/tools/` are protected (AGENTS.md § 7).** Do not write the actual logic. Your job here is to scaffold the file structure, types, and tests so the human can fill in the implementation.
+⚠️ **Tool implementations under `packages/agent/src/tools/` are protected (`docs/guidelines.md` § 7).** Do not write the actual logic. Your job here is to scaffold the file structure, types, and tests so the human can fill in the implementation.
 
 ## Steps
 
 1. **Read context first**
-   - Read `AGENTS.md` § 7 (Never do) and § 8 (Where to find things)
+   - Read `docs/guidelines.md` § 7 (Never do) and § 8 (Where to find things)
    - Read `packages/agent/src/tools/index.ts` to see existing tool registration
    - Read one existing tool file (e.g. `search-code.ts`) for the established pattern
 
