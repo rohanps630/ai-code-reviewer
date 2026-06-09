@@ -42,10 +42,11 @@ const serverSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
 
   // LLM providers
-  ANTHROPIC_API_KEY: z.string().min(1),
+  ANTHROPIC_API_KEY: z.string().min(1).optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
   GOOGLE_API_KEY: z.string().min(1).optional(),
   GROQ_API_KEY: z.string().min(1).optional(),
+  OLLAMA_BASE_URL: z.string().url().optional(),
 
   // Embeddings & rerank
   VOYAGE_API_KEY: z.string().min(1).optional(),
@@ -131,6 +132,7 @@ export const serverEnv = parseOrPassthrough(serverSchema, {
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
   GROQ_API_KEY: process.env.GROQ_API_KEY,
+  OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL,
   VOYAGE_API_KEY: process.env.VOYAGE_API_KEY,
   COHERE_API_KEY: process.env.COHERE_API_KEY,
   GITHUB_APP_ID: process.env.GITHUB_APP_ID,

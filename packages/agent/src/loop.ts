@@ -95,6 +95,11 @@ const MODEL_TIERS: Record<string, Record<Tier, string>> = {
     sonnet: "gemini-2.5-flash",
     opus: "gemini-2.5-pro",
   },
+  ollama: {
+    haiku: "qwen3.5:latest",
+    sonnet: "qwen3.5:latest",
+    opus: "deepseek-r1:14b",
+  },
 } as const;
 
 function resolveModelId(providerName: string, tier: string): string {
@@ -116,6 +121,10 @@ const PRICING_USD_PER_MTOK: Record<string, { input: number; output: number }> = 
   "gpt-4o": { input: 2.5, output: 10.0 },
   "gemini-2.5-flash": { input: 0.15, output: 0.6 },
   "gemini-2.5-pro": { input: 1.25, output: 10.0 },
+  // Local inference — no marginal cost
+  "qwen3.5:latest": { input: 0, output: 0 },
+  "deepseek-r1:14b": { input: 0, output: 0 },
+  "gemma4:e4b": { input: 0, output: 0 },
 };
 
 // ────────────────────────────────────────────────────────────────────
@@ -368,7 +377,7 @@ async function defaultDeps(tier: string): Promise<RunReviewDeps> {
     import("@acr/db/client"),
   ]);
 
-  const { anthropic, groq, openai, google } = await import("./providers/index.js");
+  const { anthropic, groq, openai, google, ollama } = await import("./providers/index.js");
 
   let provider: ModelProvider;
 
@@ -381,9 +390,10 @@ async function defaultDeps(tier: string): Promise<RunReviewDeps> {
   } else if (serverEnv.GOOGLE_API_KEY) {
     provider = google(resolveModelId("google", tier));
   } else {
-    throw new Error(
-      "No LLM provider configured. Set one of: ANTHROPIC_API_KEY, GROQ_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY.",
-    );
+    // Local Ollama — no API key required
+    provider = ollama(resolveModelId("ollama", tier), {
+      baseURL: serverEnv.OLLAMA_BASE_URL,
+    });
   }
 
   if (!serverEnv.VOYAGE_API_KEY) {

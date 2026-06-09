@@ -29,5 +29,8 @@ export type { GoogleClientLike, GoogleProviderOptions } from "./google.js";
 export { groq } from "./groq.js";
 export type { GroqProviderOptions } from "./groq.js";
 
+export { ollama } from "./ollama.js";
+export type { OllamaProviderOptions } from "./ollama.js";
+
 export { resolveModel } from "./registry.js";
 export type { ModelLike } from "./registry.js";

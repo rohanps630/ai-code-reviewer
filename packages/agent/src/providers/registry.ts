@@ -10,6 +10,7 @@
 import { anthropic } from "./anthropic.js";
 import { google } from "./google.js";
 import { groq } from "./groq.js";
+import { ollama } from "./ollama.js";
 import { openai } from "./openai.js";
 import type { ModelProvider } from "./types.js";
 
@@ -41,9 +42,11 @@ export function resolveModel(model: ModelLike): ModelProvider {
   if (/^(gpt-|o[1-4])/.test(id)) return openai(id);
   if (/^gemini-/.test(id)) return google(id);
   if (/^(llama-|mixtral-|gemma-|whisper-)/.test(id)) return groq(id);
+  // Ollama model IDs use name:tag format (e.g. "qwen3.5:latest", "deepseek-r1:14b")
+  if (id.includes(":") || /^(qwen|phi)/.test(id)) return ollama(id);
 
   throw new Error(
     `Cannot infer a provider for model "${id}". Pass a provider object ` +
-      `(e.g. anthropic("${id}"), openai("${id}"), google("${id}"), groq("${id}")) instead.`,
+      `(e.g. anthropic("${id}"), openai("${id}"), google("${id}"), groq("${id}"), ollama("${id}")) instead.`,
   );
 }
