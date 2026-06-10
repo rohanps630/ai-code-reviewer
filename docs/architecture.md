@@ -118,7 +118,12 @@ apps/indexer/
 
 ```
 packages/agent/src/
-├── loop.ts                 # The agent loop: model call → parse → tool call → repeat
+├── agent.ts                # Agent runtime: typed stream() event loop, cost cap,
+│                           #   abort, timeouts, tool concurrency, stopTool, hooks
+├── agent-types.ts          # AgentEvent union, error taxonomy, hook/config types
+├── models.ts               # Tier → model-id table + pricing (for the cost cap)
+├── loop.ts                 # runReview: a thin specialization of Agent (ADR-004)
+├── providers/              # Model-agnostic seam (anthropic/openai/google/groq/ollama)
 ├── tools/
 │   ├── search-code.ts      # Hybrid retrieval over chunks
 │   ├── read-file.ts        # Direct file read by path or symbol
@@ -141,8 +146,19 @@ packages/agent/src/
 
 Key principles:
 
+- **`Agent` is the runtime; `runReview` is a specialization** (ADR-004). The
+  production loop lives in `agent.ts`: a declarative, model-agnostic class whose
+  `stream()` drives a typed `AgentEvent` loop and owns the cross-cutting
+  concerns — usage/cost accounting + spend cap, end-to-end `AbortSignal`
+  cancellation, model/tool/run timeouts, tool-output truncation, a tool
+  concurrency cap, structured termination via a `stopTool`, and lifecycle
+  hooks. `loop.ts` configures one `Agent` (review system prompt, the review
+  tools, `submit_review` as the stop tool, pricing from `models.ts`) and maps
+  its events onto the public `ReviewChunk` stream. Add agentic capabilities to
+  the runtime, not to `runReview`.
 - **Tools are pure-ish**: input → output via Zod schemas. Side effects (DB, HTTP) are dependency-injected so tests can stub.
-- **The loop is one function** with explicit termination conditions: stop_sequence reached, max_iterations exceeded, hard cost cap hit.
+- **Termination is explicit**: the model calls `submit_review` (the stop tool),
+  or the run hits `maxIterations`, the hard cost cap, a timeout, or an abort.
 - **Prompts are versioned files**, never edited in place. See `docs/prompts.md`.
 - **Retrieval is composable**: `searchCode(query)` runs BM25 + vector + rerank as separate steps you can inspect and replace.
 
