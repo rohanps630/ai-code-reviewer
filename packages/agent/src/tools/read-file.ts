@@ -18,6 +18,7 @@
 import { sql } from "@acr/db";
 import { z } from "zod";
 
+import { sanitizeUntrustedText } from "../loop.js";
 import type { JsonSchemaObject, Tool } from "./types.js";
 
 const InputSchema = z.object({
@@ -112,7 +113,7 @@ export function createReadFileTool(
         found: true,
         path: input.path,
         language: row.language,
-        content: row.content ?? "",
+        content: `<untrusted_file_content path="${input.path}">\n${sanitizeUntrustedText(row.content ?? "")}\n</untrusted_file_content>`,
         chunk_count:
           typeof row.chunk_count === "string" ? Number(row.chunk_count) : row.chunk_count,
       };

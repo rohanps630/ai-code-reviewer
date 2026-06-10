@@ -78,6 +78,8 @@ export type ModelRequest = {
 export type TokenUsage = {
   readonly inputTokens: number;
   readonly outputTokens: number;
+  readonly cacheReadTokens?: number;
+  readonly cacheCreationTokens?: number;
 };
 
 /** Normalized stop reason. Providers use different vocabularies; adapters

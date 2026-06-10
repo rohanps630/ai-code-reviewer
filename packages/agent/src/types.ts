@@ -13,8 +13,8 @@
 
 export type ReviewInput = {
   diff: string;
-  /** Which model to use. Phase 5 router populates this; defaults to sonnet. */
-  model?: "haiku" | "sonnet" | "opus";
+  /** Which model to use. Phase 5 router populates this; defaults to auto/sonnet. */
+  model?: "haiku" | "sonnet" | "opus" | "auto";
   /** Repo metadata. Phase 2 fills this from the connected GitHub repo. */
   repoContext?: {
     owner: string;
@@ -61,4 +61,14 @@ export type ReviewChunk =
   | { type: "tool_call"; name: string; input: unknown }
   | { type: "tool_result"; name: string; output: unknown }
   | { type: "text"; delta: string }
-  | { type: "final"; output: ReviewOutput };
+  | {
+      type: "final";
+      output: ReviewOutput;
+      usage?: {
+        inputTokens: number;
+        outputTokens: number;
+        costUsd: number;
+        cacheReadTokens?: number;
+        cacheCreationTokens?: number;
+      };
+    };

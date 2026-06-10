@@ -25,6 +25,7 @@
 
 import { z } from "zod";
 
+import { sanitizeUntrustedText } from "../loop.js";
 import type { SearchResult } from "../retrieval/index.js";
 import type { JsonSchemaObject, Tool } from "./types.js";
 
@@ -113,6 +114,6 @@ function toHit(r: SearchResult): SearchCodeOutput["hits"][number] {
     end_line: r.endLine,
     symbol_name: r.symbolName,
     symbol_kind: r.symbolKind ?? null,
-    content_with_context: r.contentWithContext,
+    content_with_context: `<untrusted_chunk path="${r.path}">\n${sanitizeUntrustedText(r.contentWithContext)}\n</untrusted_chunk>`,
   };
 }

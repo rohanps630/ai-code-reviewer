@@ -97,7 +97,7 @@ const MODEL_TIERS: Record<string, Record<Tier, string>> = {
   },
   ollama: {
     haiku: "qwen3.5:latest",
-    sonnet: "qwen3.5:latest",
+    sonnet: "gemma4:e4b",
     opus: "deepseek-r1:14b",
   },
 } as const;
@@ -201,12 +201,61 @@ const SUBMIT_REVIEW_TOOL: ToolSpec = {
 // runReview — async-generator entry point
 // ────────────────────────────────────────────────────────────────────
 
+/**
+ * Heuristic-based model router.
+ * Routes based on diff size, files changed, and public API modifications.
+ */
+export function routeModel(diff: string): "haiku" | "sonnet" | "opus" {
+  const lines = diff.split("\n");
+  const totalLines = lines.length;
+
+  // Count changed files
+  const fileHeaders = lines.filter((line) => line.startsWith("diff --git "));
+  const filesChanged = fileHeaders.length || 1;
+
+  // Check for public API surface changes
+  let hasApiSurfaceChange = false;
+  const apiPatterns = [
+    /^\+\s*export\s+/, // TypeScript/JavaScript exports
+    /^\+\s*(pub\s+)?(fn|struct|enum|trait|type)\s+/, // Go/Rust public types/functions
+    /^\+\s*(def|class)\s+[a-zA-Z0-9_]/, // Python classes/functions
+  ];
+
+  for (const line of lines) {
+    if (apiPatterns.some((pattern) => pattern.test(line))) {
+      hasApiSurfaceChange = true;
+      break;
+    }
+  }
+
+  // Trivial: < 50 lines, 1 file, no API surface changes
+  if (totalLines < 50 && filesChanged === 1 && !hasApiSurfaceChange) {
+    return "haiku";
+  }
+
+  // Complex: > 500 lines or > 5 files changed
+  if (totalLines > 500 || filesChanged > 5) {
+    return "opus";
+  }
+
+  // Standard: otherwise
+  return "sonnet";
+}
+
 export async function* runReview(
   input: ReviewInput,
   deps?: RunReviewDeps,
 ): AsyncGenerator<ReviewChunk, void, void> {
-  const resolved = deps ?? (await defaultDeps(input.model ?? "sonnet"));
-  yield* runReviewWithDeps(input, resolved);
+  const resolvedModel =
+    !input.model || input.model === "auto" ? routeModel(input.diff) : input.model;
+
+  const resolvedInput = {
+    ...input,
+    model: resolvedModel,
+  };
+
+  const resolved = deps ?? (await defaultDeps(resolvedModel));
+  yield* runReviewWithDeps(resolvedInput, resolved);
 }
 
 async function* runReviewWithDeps(
@@ -240,6 +289,10 @@ async function* runReviewWithDeps(
   const messages: ModelMessage[] = [{ role: "user", content: buildOpeningMessage(input) }];
 
   let totalCostUsd = 0;
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+  let totalCacheReadTokens = 0;
+  let totalCacheCreationTokens = 0;
   let iteration = 0;
 
   yield {
@@ -262,11 +315,27 @@ async function* runReviewWithDeps(
       yield { type: "text", delta: response.text };
     }
 
+    totalInputTokens += response.usage.inputTokens;
+    totalOutputTokens += response.usage.outputTokens;
+    totalCacheReadTokens += response.usage.cacheReadTokens ?? 0;
+    totalCacheCreationTokens += response.usage.cacheCreationTokens ?? 0;
+
     const pricing = PRICING_USD_PER_MTOK[deps.provider.modelId];
     if (pricing) {
-      totalCostUsd +=
-        (response.usage.inputTokens / 1_000_000) * pricing.input +
+      const cacheRead = response.usage.cacheReadTokens ?? 0;
+      const cacheWrite = response.usage.cacheCreationTokens ?? 0;
+      const baseInput = response.usage.inputTokens - cacheRead - cacheWrite;
+
+      const writeRate = pricing.input * 1.25;
+      const readRate = pricing.input * 0.1;
+
+      const stepCost =
+        (baseInput / 1_000_000) * pricing.input +
+        (cacheRead / 1_000_000) * readRate +
+        (cacheWrite / 1_000_000) * writeRate +
         (response.usage.outputTokens / 1_000_000) * pricing.output;
+
+      totalCostUsd += stepCost;
     }
 
     messages.push({
@@ -279,7 +348,17 @@ async function* runReviewWithDeps(
     const submitCall = response.toolCalls.find((tc) => tc.name === SUBMIT_REVIEW_NAME);
     if (submitCall) {
       const output = validateReviewOutput(submitCall.input);
-      yield { type: "final", output };
+      yield {
+        type: "final",
+        output,
+        usage: {
+          inputTokens: totalInputTokens,
+          outputTokens: totalOutputTokens,
+          costUsd: totalCostUsd,
+          cacheReadTokens: totalCacheReadTokens,
+          cacheCreationTokens: totalCacheCreationTokens,
+        },
+      };
       return;
     }
 
@@ -334,11 +413,26 @@ async function* runReviewWithDeps(
 // Helpers
 // ────────────────────────────────────────────────────────────────────
 
+/**
+ * Escapes closing/opening tags of sensitive system delimiters in untrusted user-supplied
+ * inputs to prevent prompt injection.
+ */
+export function sanitizeUntrustedText(text: string): string {
+  if (!text) return "";
+  return text.replace(
+    /<(\/?)(diff|untrusted_file_content|untrusted_chunk)(?:\s+[^>]*)?>/gi,
+    (match, slash, tagName) => {
+      const attrs = match.includes(" ") ? match.slice(match.indexOf(" "), -1) : "";
+      return `&lt;${slash || ""}${tagName}${attrs}&gt;`;
+    },
+  );
+}
+
 export function buildOpeningMessage(input: ReviewInput): string {
   const repoCtx = input.repoContext
     ? `\nRepo: ${input.repoContext.owner}/${input.repoContext.repo} (branch: ${input.repoContext.defaultBranch})\n`
     : "";
-  return `Review the following diff. Use the available tools to gather context as needed. When you have enough information, call \`submit_review\` with your final findings.\n${repoCtx}\n<diff>\n${input.diff}\n</diff>`;
+  return `Review the following diff. Use the available tools to gather context as needed. When you have enough information, call \`submit_review\` with your final findings.\n${repoCtx}\n<diff>\n${sanitizeUntrustedText(input.diff)}\n</diff>`;
 }
 
 /** Light runtime guard on the model's submit_review input. */
@@ -396,20 +490,22 @@ async function defaultDeps(tier: string): Promise<RunReviewDeps> {
     });
   }
 
-  if (!serverEnv.VOYAGE_API_KEY) {
-    throw new Error("VOYAGE_API_KEY is not set — required for retrieval");
+  let retriever: RetrieverLike;
+  if (serverEnv.VOYAGE_API_KEY) {
+    const { VoyageClient, CohereReranker } = await import("./retrieval/index.js");
+    const embedder = new VoyageClient({ apiKey: serverEnv.VOYAGE_API_KEY });
+    const reranker = serverEnv.COHERE_API_KEY
+      ? new CohereReranker({ apiKey: serverEnv.COHERE_API_KEY })
+      : undefined;
+    retriever = new HybridRetriever({
+      embedder,
+      executor: db as unknown as SqlExecutorLike,
+      reranker,
+    });
+  } else {
+    // No VOYAGE_API_KEY — use a no-op retriever (evals / local runs without a real index)
+    retriever = { search: async () => [] };
   }
-
-  const { VoyageClient, CohereReranker } = await import("./retrieval/index.js");
-  const embedder = new VoyageClient({ apiKey: serverEnv.VOYAGE_API_KEY });
-  const reranker = serverEnv.COHERE_API_KEY
-    ? new CohereReranker({ apiKey: serverEnv.COHERE_API_KEY })
-    : undefined;
-  const retriever = new HybridRetriever({
-    embedder,
-    executor: db as unknown as SqlExecutorLike,
-    reranker,
-  });
 
   const sandboxFactory: RunTestsSandboxFactory | undefined = serverEnv.E2B_API_KEY
     ? await defaultE2BFactory(serverEnv.E2B_API_KEY)

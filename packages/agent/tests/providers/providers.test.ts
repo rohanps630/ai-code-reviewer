@@ -63,7 +63,9 @@ describe("anthropic adapter", () => {
     // Request shape
     const params = create.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(params.model).toBe("claude-sonnet-4-7");
-    expect(params.system).toBe("you are a reviewer");
+    expect(params.system).toEqual([
+      { type: "text", text: "you are a reviewer", cache_control: { type: "ephemeral" } },
+    ]);
     expect(params.max_tokens).toBe(1024);
     expect((params.tools as unknown[])?.[0]).toMatchObject({
       name: "search_code",
@@ -78,7 +80,12 @@ describe("anthropic adapter", () => {
     // Response parsing
     expect(res.text).toBe("thinking");
     expect(res.toolCalls).toEqual([{ id: "tu_1", name: "search_code", input: { query: "x" } }]);
-    expect(res.usage).toEqual({ inputTokens: 10, outputTokens: 5 });
+    expect(res.usage).toEqual({
+      inputTokens: 10,
+      outputTokens: 5,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    });
     expect(res.stopReason).toBe("tool_calls");
   });
 
@@ -224,6 +231,6 @@ describe("resolveModel", () => {
   });
 
   it("throws on an unrecognized model id", () => {
-    expect(() => resolveModel("llama-3")).toThrow(/Cannot infer a provider/);
+    expect(() => resolveModel("invalid-model")).toThrow(/Cannot infer a provider/);
   });
 });

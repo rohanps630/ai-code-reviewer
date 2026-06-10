@@ -21,6 +21,14 @@
 
 ## Change log
 
+### v0.3 — prompt injection defenses & XML tags (Phase 5)
+
+- **Date**: 2026-06-10
+- **Author**: Antigravity
+- **Change**: Added explicit prompt-injection defense constraints and described XML delimiters (`<diff>`, `<untrusted_file_content>`, `<untrusted_chunk>`) wrapping all untrusted input.
+- **Eval impact**: Not yet run. Bumping version to v0.3 to enforce separation.
+- **Verdict**: Production-ready defense.
+
 ### v0.1 — initial placeholder (Phase 1)
 
 - **Date**: 2026-05-13

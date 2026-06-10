@@ -73,7 +73,8 @@ describe("createSearchCodeTool", () => {
           end_line: 24,
           symbol_name: "login",
           symbol_kind: "function",
-          content_with_context: "Context for login.\nfunction login() {}",
+          content_with_context:
+            '<untrusted_chunk path="src/auth/login.ts">\nContext for login.\nfunction login() {}\n</untrusted_chunk>',
         },
       ],
     });

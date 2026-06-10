@@ -5,7 +5,7 @@
  * the retrieval surface. Internal modules (prompts, tools) are not
  * re-exported — they are consumed only by loop.ts.
  */
-export { runReview } from "./loop.js";
+export { runReview, routeModel, sanitizeUntrustedText } from "./loop.js";
 export type { Finding, ReviewChunk, ReviewInput, ReviewOutput } from "./types.js";
 
 // Declarative, model-agnostic agent primitive (ADR-003). Separate from
@@ -32,6 +32,7 @@ export type {
   GoogleClientLike,
   GoogleProviderOptions,
 } from "./providers/index.js";
+export { defaultE2BFactory } from "./tools/index.js";
 
 // Retrieval — public surface. Consumers should prefer `searchCode`;
 // the lane helpers and clients are exposed for the eval harness and

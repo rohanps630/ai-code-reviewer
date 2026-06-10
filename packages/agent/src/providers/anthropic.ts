@@ -39,14 +39,19 @@ type AnthropicMessageParam = {
 type AnthropicCreateParams = {
   model: string;
   max_tokens: number;
-  system?: string;
+  system?: string | Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } }>;
   tools?: Array<{ name: string; description: string; input_schema: unknown }>;
   messages: AnthropicMessageParam[];
 };
 
 type AnthropicMessage = {
   content: AnthropicContentBlock[];
-  usage: { input_tokens: number; output_tokens: number };
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
+  };
   stop_reason: string | null;
 };
 
@@ -88,7 +93,15 @@ export function anthropic(modelId: string, options: AnthropicProviderOptions = {
       const message = await c.messages.create({
         model: modelId,
         max_tokens: request.maxTokens || maxTokensDefault,
-        system: request.system,
+        system: request.system
+          ? [
+              {
+                type: "text",
+                text: request.system,
+                cache_control: { type: "ephemeral" },
+              },
+            ]
+          : undefined,
         tools:
           request.tools.length > 0
             ? request.tools.map((t) => ({
@@ -176,6 +189,8 @@ export function parseAnthropicMessage(message: AnthropicMessage): ModelResponse 
     usage: {
       inputTokens: message.usage?.input_tokens ?? 0,
       outputTokens: message.usage?.output_tokens ?? 0,
+      cacheReadTokens: message.usage?.cache_read_input_tokens ?? 0,
+      cacheCreationTokens: message.usage?.cache_creation_input_tokens ?? 0,
     },
     stopReason: mapStopReason(message.stop_reason),
   };

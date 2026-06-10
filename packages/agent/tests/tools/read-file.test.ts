@@ -26,7 +26,8 @@ describe("createReadFileTool", () => {
       found: true,
       path: "src/auth/login.ts",
       language: "typescript",
-      content: "// chunk 1\n// chunk 2",
+      content:
+        '<untrusted_file_content path="src/auth/login.ts">\n// chunk 1\n// chunk 2\n</untrusted_file_content>',
       chunk_count: 2,
     });
   });
