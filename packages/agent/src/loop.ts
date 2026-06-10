@@ -39,7 +39,7 @@ import {
   AgentStopToolValidationError,
 } from "./agent.js";
 import type { AgentHooks, AgentTool } from "./agent.js";
-import { getModelPricing } from "./models.js";
+import { getModelPricing, resolveModelId } from "./models.js";
 import { CURRENT_SYSTEM_PROMPT } from "./prompts/index.js";
 import type { ModelProvider } from "./providers/index.js";
 import { HybridRetriever, type SearchResult } from "./retrieval/index.js";
@@ -57,8 +57,6 @@ import type { Finding, ReviewChunk, ReviewInput, ReviewOutput } from "./types.js
 // ────────────────────────────────────────────────────────────────────
 // Configuration
 // ────────────────────────────────────────────────────────────────────
-
-import { resolveModelId } from "./models.js";
 
 const MAX_ITERATIONS = 10;
 const COST_CAP_USD = 0.5;
