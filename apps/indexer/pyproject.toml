@@ -16,6 +16,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "mypy>=1.10",
     "pytest>=8.0",
     "ruff>=0.6",
 ]
@@ -40,3 +41,8 @@ per-file-ignores = { "tests/**/*.py" = ["S101"] }
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.mypy]
+strict = false
+ignore_missing_imports = true
+python_version = "3.12"

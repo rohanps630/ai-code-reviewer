@@ -16,11 +16,12 @@ import { z } from "zod";
 
 import { serverEnv } from "@/lib/env";
 import { getLangfuse } from "@/lib/langfuse";
+import { applyRateLimit } from "@/lib/rate-limit";
 import { redis } from "@/lib/redis";
 import { SEMANTIC_CACHE_SIMILARITY_THRESHOLD } from "@/lib/review-constants";
 
 const BodySchema = z.object({
-  diff: z.string().min(1, "diff must not be empty"),
+  diff: z.string().min(1, "diff must not be empty").max(500_000, "diff exceeds 500 KB limit"),
   model: z.enum(["haiku", "sonnet", "opus", "auto"]).default("auto"),
 });
 
@@ -43,6 +44,12 @@ function sha256(text: string): string {
 }
 
 export async function POST(req: Request) {
+  // Rate limit: 10 requests per IP per minute (sliding window)
+  const rl = await applyRateLimit(req);
+  if (!rl.success) {
+    return Response.json({ error: "Rate limit exceeded" }, { status: 429 });
+  }
+
   const raw = await req.json().catch(() => null);
   const parsed = BodySchema.safeParse(raw);
   if (!parsed.success) {

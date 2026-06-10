@@ -21,7 +21,6 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "clean": "tsc --build --clean && turbo run clean && rm -rf node_modules",
-    "test:e2e": "turbo run test:e2e",
     "db:generate": "pnpm --filter @acr/db generate",
     "db:migrate": "pnpm --filter @acr/db migrate",
     "db:studio": "pnpm --filter @acr/db studio",
