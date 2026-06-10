@@ -1,15 +1,42 @@
 import type { ReviewOutput } from "@acr/agent";
+import type { Finding } from "@acr/agent";
 import { eq, reviews } from "@acr/db";
 import type { Review } from "@acr/db";
+import { ArrowLeft, Coins, GitPullRequest, RotateCcw, Timer } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { DiffViewer } from "@/components/features/reviews/diff-viewer";
 import { FindingItem } from "@/components/features/reviews/finding-item";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
+
+const STATUS_VARIANT: Record<Review["status"], "pending" | "streaming" | "completed" | "failed"> = {
+  pending: "pending",
+  streaming: "streaming",
+  completed: "completed",
+  failed: "failed",
+};
+
+function groupByKey<T>(items: T[], key: (item: T) => string): Record<string, T[]> {
+  const acc: Record<string, T[]> = {};
+  for (const item of items) {
+    const k = key(item);
+    if (!acc[k]) acc[k] = [];
+    acc[k].push(item);
+  }
+  return acc;
+}
+
+function formatCost(cost: string | null): string | null {
+  if (!cost) return null;
+  const n = Number.parseFloat(cost);
+  if (Number.isNaN(n)) return null;
+  return `$${n.toFixed(4)}`;
+}
 
 export default async function ReviewDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -17,46 +44,120 @@ export default async function ReviewDetailPage({ params }: { params: Promise<{ i
   if (!review) notFound();
 
   const output = review.output as ReviewOutput | null;
+  const groups = output ? groupByKey(output.findings, (f: Finding) => f.severity) : null;
+  const cost = formatCost(review.cost_usd);
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-semibold text-2xl tracking-tight">Review</h1>
-          <p className="text-muted-foreground text-xs">
-            {new Date(review.created_at).toLocaleString()} · {review.model} · {review.status}
-          </p>
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+            <GitPullRequest className="size-4 text-primary" />
+          </div>
+          <div>
+            <h1 className="font-semibold text-xl tracking-tight">Review</h1>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <Badge variant={STATUS_VARIANT[review.status]}>{review.status}</Badge>
+              <span className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-muted-foreground text-xs">
+                {review.model}
+              </span>
+              {review.cache_status && review.cache_status !== "miss" ? (
+                <Badge variant={review.cache_status}>
+                  {review.cache_status === "exact" ? "exact cache" : "semantic cache"}
+                </Badge>
+              ) : null}
+              {cost ? (
+                <span className="flex items-center gap-1 text-muted-foreground text-xs">
+                  <Coins className="size-3" />
+                  {cost}
+                </span>
+              ) : null}
+              {review.input_tokens || review.output_tokens ? (
+                <span className="flex items-center gap-1 text-muted-foreground text-xs">
+                  <Timer className="size-3" />
+                  {review.input_tokens?.toLocaleString()} in ·{" "}
+                  {review.output_tokens?.toLocaleString()} out
+                </span>
+              ) : null}
+              <span className="text-muted-foreground text-xs">
+                {new Date(review.created_at).toLocaleString()}
+              </span>
+            </div>
+          </div>
         </div>
-        <RerunForm diff={review.diff} model={review.model} />
+        <RerunButton diff={review.diff} model={review.model} />
       </div>
 
-      <Card className="flex flex-col gap-3 p-6">
-        <h2 className="font-medium text-sm uppercase tracking-wide">Diff</h2>
+      {/* Diff */}
+      <div className="flex flex-col gap-3">
+        <h2 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">Diff</h2>
         <DiffViewer diff={review.diff} />
-      </Card>
+      </div>
 
-      <Card className="flex flex-col gap-3 p-6">
-        <h2 className="font-medium text-sm uppercase tracking-wide">Output</h2>
+      {/* Output */}
+      <div className="flex flex-col gap-4 rounded-xl border border-border bg-card/60 p-6">
+        <h2 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+          Output
+        </h2>
         {output ? (
-          <>
-            <p className="text-sm">{output.summary}</p>
-            <ul className="flex flex-col gap-2">
-              {output.findings.map((finding, i) => (
-                <FindingItem key={`${i}-${finding.summary.slice(0, 16)}`} finding={finding} />
-              ))}
-            </ul>
-            <p className="text-muted-foreground text-xs">Confidence: {output.confidence}</p>
-          </>
+          <div className="flex flex-col gap-5">
+            {/* Summary */}
+            <p className="text-sm leading-relaxed">{output.summary}</p>
+
+            {/* Grouped findings */}
+            {(["critical", "major", "minor"] as const).map((sev) => {
+              const items = groups?.[sev] ?? [];
+              if (items.length === 0) return null;
+              return (
+                <div key={sev} className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <Badge variant={sev}>{sev}</Badge>
+                    <span className="text-muted-foreground text-xs">
+                      {items.length} finding{items.length > 1 ? "s" : ""}
+                    </span>
+                  </div>
+                  <ul className="flex flex-col gap-2">
+                    {items.map((finding, i) => (
+                      <FindingItem
+                        key={`${i}-${finding.summary.slice(0, 16)}`}
+                        finding={finding as Finding}
+                      />
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+
+            <p className="text-muted-foreground text-xs">
+              Confidence:{" "}
+              <span
+                className={cn(
+                  "font-medium",
+                  output.confidence === "high"
+                    ? "text-emerald-400"
+                    : output.confidence === "medium"
+                      ? "text-amber-400"
+                      : "text-muted-foreground",
+                )}
+              >
+                {output.confidence}
+              </span>
+            </p>
+          </div>
         ) : (
           <p className="text-muted-foreground text-sm">No output yet.</p>
         )}
-      </Card>
-
-      <div>
-        <Link href="/reviews" className="text-muted-foreground text-sm underline">
-          ← Back to reviews
-        </Link>
       </div>
+
+      {/* Back link */}
+      <Link
+        href="/reviews"
+        className="flex w-fit items-center gap-1.5 text-muted-foreground text-sm transition-colors hover:text-foreground"
+      >
+        <ArrowLeft className="size-3.5" />
+        Back to reviews
+      </Link>
     </div>
   );
 }
@@ -67,12 +168,13 @@ async function loadReview(id: string): Promise<Review | null> {
   return rows[0] ?? null;
 }
 
-function RerunForm({ diff, model }: { diff: string; model: string }) {
+function RerunButton({ diff, model }: { diff: string; model: string }) {
   return (
     <form
       action={`/reviews/new?diff=${encodeURIComponent(diff)}&model=${encodeURIComponent(model)}`}
     >
-      <Button type="submit" variant="outline">
+      <Button type="submit" variant="outline" size="sm" className="shrink-0">
+        <RotateCcw className="size-3.5" />
         Re-run
       </Button>
     </form>

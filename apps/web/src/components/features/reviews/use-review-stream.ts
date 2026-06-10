@@ -3,6 +3,14 @@
 import type { ReviewChunk, ReviewOutput } from "@acr/agent";
 import { useCallback, useState } from "react";
 
+export type ReviewUsage = {
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  cacheReadTokens?: number;
+  cacheCreationTokens?: number;
+};
+
 export type ReviewStreamState = {
   status: "idle" | "streaming" | "completed" | "failed";
   text: string;
@@ -10,6 +18,7 @@ export type ReviewStreamState = {
   final: ReviewOutput | null;
   reviewId: string | null;
   error: string | null;
+  usage: ReviewUsage | null;
 };
 
 const INITIAL: ReviewStreamState = {
@@ -19,6 +28,7 @@ const INITIAL: ReviewStreamState = {
   final: null,
   reviewId: null,
   error: null,
+  usage: null,
 };
 
 export function useReviewStream() {
@@ -90,7 +100,12 @@ function applyChunk(state: ReviewStreamState, chunk: ReviewChunk): ReviewStreamS
     case "text":
       return { ...state, text: state.text + chunk.delta };
     case "final":
-      return { ...state, final: chunk.output, status: "completed" };
+      return {
+        ...state,
+        final: chunk.output,
+        status: "completed",
+        usage: chunk.usage ?? null,
+      };
     default:
       return state;
   }
