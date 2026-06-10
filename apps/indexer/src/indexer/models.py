@@ -18,7 +18,11 @@ SymbolKind = Literal["function", "class", "method", "module", "block"]
 
 
 class Chunk(BaseModel):
-    """One AST-aware slice of a source file, the unit of retrieval."""
+    """Pydantic model representing a single AST-aware slice of a source file.
+
+    Serves as the unit of retrieval containing positional line bounds, content hash,
+    and optional symbol details.
+    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -47,7 +51,10 @@ class Chunk(BaseModel):
 
 
 class FileChunks(BaseModel):
-    """A document and its chunks. The indexer pipeline emits one per file."""
+    """Pydantic model container for a document (file) and all its parsed Chunks.
+
+    Emitted by the chunker pipeline per source file processed.
+    """
 
     model_config = ConfigDict(frozen=True)
 

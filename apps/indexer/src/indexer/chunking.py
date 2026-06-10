@@ -80,11 +80,15 @@ def _language_for(name: str) -> Language:
 
 
 def chunk_file(path: Path, *, repo_root: Path | None = None) -> FileChunks | None:
-    """Chunk a single source file.
+    """Chunk a single source file using tree-sitter.
 
-    Returns None if the file isn't supported, too big, or fails to read.
-    The caller (pipeline) is responsible for repo-walk + filtering;
-    this function only sees one file.
+    Args:
+        path: Path to the target file.
+        repo_root: Optional repository root path, used to compute a relative path.
+
+    Returns:
+        A FileChunks container holding the chunks, or None if the file language
+        is unsupported, file is too big, empty, or fails to read.
     """
     language_name = detect_language(path)
     if language_name is None:

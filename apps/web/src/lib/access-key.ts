@@ -13,9 +13,15 @@
 import { serverEnv } from "@acr/shared/env";
 
 /**
- * Return a 401 Response if the request's `x-access-key` header doesn't
- * match `ACCESS_KEY`. Returns `null` when auth passes (or when no key
- * is configured).
+ * Guard function that verifies the access key in incoming request headers.
+ * Returns a 401 Response if verification fails, or null if it succeeds.
+ *
+ * @param req - The incoming request object.
+ * @returns A response if unauthorized, otherwise null.
+ *
+ * @example
+ * const denied = checkAccessKey(req);
+ * if (denied) return denied;
  */
 export function checkAccessKey(req: Request): Response | null {
   const expected = serverEnv.ACCESS_KEY;

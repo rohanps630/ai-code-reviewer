@@ -29,6 +29,13 @@
       "when": 1749513600000,
       "tag": "0003_chunks_symbol_kind_check",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1781114501664,
+      "tag": "0004_smiling_jackpot",
+      "breakpoints": true
     }
   ]
 }

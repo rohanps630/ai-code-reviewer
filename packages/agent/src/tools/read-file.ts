@@ -74,6 +74,15 @@ type DocumentRow = {
   chunk_count: string | number;
 };
 
+/**
+ * Creates a tool to fetch an indexed file by its exact path.
+ *
+ * @param executor - The SQL query executor client.
+ * @returns A Tool instance configured to read files.
+ *
+ * @example
+ * const readFileTool = createReadFileTool(dbExecutor);
+ */
 export function createReadFileTool(
   executor: ReadFileExecutor,
 ): Tool<ReadFileInput, ReadFileOutput> {

@@ -14,6 +14,13 @@ import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/
  *   - `last_indexed_commit`  sha of the commit indexed; powers incremental re-indexing.
  *   - `status`               'pending' | 'indexing' | 'indexed' | 'failed'.
  */
+/**
+ * Database table schema for tracking connected GitHub repositories.
+ *
+ * @example
+ * import { repos } from "@acr/db";
+ * const results = await db.select().from(repos);
+ */
 export const repos = pgTable(
   "repos",
   {

@@ -178,15 +178,16 @@ Schemas live in `packages/db/src/schema/`. **Tables that exist today:**
 - `chunks` — AST-aware chunks with embeddings (pgvector, HNSW index) and a
   generated `content_tsv` tsvector (GIN index) for BM25
 - `semantic_cache` — cached responses by query embedding (HNSW index)
+- `agent_events` — the persisted review event stream for run/step replay: one
+  row per emitted `ReviewChunk` (`status`/`tool_call`/`tool_result`/`text`/
+  `error`/`final`), keyed by `review_id` with a `seq` order. One review = one
+  run, so there is no separate `agent_runs` table — the `reviews` row holds the
+  run-level metadata and these are the per-step detail.
 
 See `packages/db/src/schema/*.ts` for current column definitions.
 
 **Planned (not yet in the schema):**
 
-- `agent_runs` / `agent_steps` — persist each agent execution and every
-  model/tool step with timing and cost, to power run/step replay. The runtime
-  already emits a complete event stream (`packages/agent/src/agent-types.ts`);
-  these tables are the persistence layer for it.
 - `eval_*` tables — eval runs currently write to JSON under
   `evals/results/<run-id>/` rather than Postgres; a DB-backed eval store is a
   future option, not a current dependency.
@@ -203,9 +204,12 @@ over a streamed HTTP response from `/api/reviews` — not the Vercel AI SDK and
 not raw WebSockets. The client parses chunks line-by-line
 (`apps/web/src/components/features/reviews/use-review-stream.ts`).
 
-> Note: the event stream is currently transient — it is rendered live but only
-> the final review output is persisted. Per-step persistence + replay is the
-> planned `agent_runs`/`agent_steps` work (see Data model).
+**Persistence + replay:** as it streams, `review-stream.ts` tees each
+`ReviewChunk` into `agent_events` (best-effort, batched, with a `seq` order).
+The review detail page reconstructs the run from those rows via the shared
+`review-stream-state.ts` reducer — the same one the live UI uses — so a review
+replays identically after a refresh and stays inspectable later. Events are also
+exposed at `GET /api/reviews/[id]/events`.
 
 ## Retrieval pipeline (Phase 2+)
 

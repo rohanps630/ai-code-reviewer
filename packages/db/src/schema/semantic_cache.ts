@@ -12,6 +12,13 @@ import { index, pgTable, text, timestamp, uuid, vector } from "drizzle-orm/pg-co
  *   - `embedding`  voyage-code-3 vector(1024) of the diff text.
  *   - `expires_at` TTL expiration (enforces the 1-day TTL constraint).
  */
+/**
+ * Database table schema for semantic cache storing previous review outputs.
+ *
+ * @example
+ * import { semanticCache } from "@acr/db";
+ * const results = await db.select().from(semanticCache).limit(5);
+ */
 export const semanticCache = pgTable(
   "semantic_cache",
   {

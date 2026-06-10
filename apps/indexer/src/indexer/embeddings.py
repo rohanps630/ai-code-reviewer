@@ -68,7 +68,10 @@ class _RetryableHTTPStatusError(RuntimeError):
 
 
 class VoyageEmbedder:
-    """Synchronous Voyage embeddings client."""
+    """Synchronous Voyage embeddings client.
+
+    Sends requests to Voyage API to compute vectors for documents and queries.
+    """
 
     def __init__(
         self,
@@ -101,11 +104,25 @@ class VoyageEmbedder:
     # ── public ──────────────────────────────────────────────────────────
 
     def embed_documents(self, texts: list[str]) -> list[Vector]:
-        """Embed a list of indexable chunks. Returns vectors in the same order."""
+        """Embed a list of indexable chunks.
+
+        Args:
+            texts: List of text strings (chunks) to embed.
+
+        Returns:
+            A list of computed vectors in the same order as input texts.
+        """
         return self._embed_batched(texts, input_type="document")
 
     def embed_query(self, query: str) -> Vector:
-        """Embed a single search query. Returns one vector."""
+        """Embed a single search query.
+
+        Args:
+            query: The search query text.
+
+        Returns:
+            A single vector list of floats for the query.
+        """
         vectors = self._embed_batched([query], input_type="query")
         # _embed_batched guarantees one vector per input
         return vectors[0]
@@ -181,10 +198,16 @@ class VoyageEmbedder:
 
 
 def voyage_embedder_from_env(**kwargs: object) -> VoyageEmbedder:
-    """Construct a VoyageEmbedder using credentials from `shared.config`.
+    """Construct a VoyageEmbedder using credentials loaded from the environment settings.
 
-    Raises EmbeddingError if VOYAGE_API_KEY isn't configured — fail loud
-    rather than silently produce empty vectors.
+    Args:
+        **kwargs: Overrides to pass to the VoyageEmbedder constructor.
+
+    Returns:
+        An initialized VoyageEmbedder instance.
+
+    Raises:
+        EmbeddingError: If VOYAGE_API_KEY is not configured in the settings.
     """
     settings = load_settings()
     if not settings.voyage_api_key:

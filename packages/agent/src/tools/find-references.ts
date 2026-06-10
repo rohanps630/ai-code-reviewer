@@ -85,6 +85,15 @@ type ReferenceRow = {
   content: string;
 };
 
+/**
+ * Creates a tool to find symbol cross-references via BM25 search.
+ *
+ * @param executor - The SQL query executor client.
+ * @returns A Tool instance configured to find symbol references.
+ *
+ * @example
+ * const findRefsTool = createFindReferencesTool(dbExecutor);
+ */
 export function createFindReferencesTool(
   executor: FindReferencesExecutor,
 ): Tool<FindReferencesInput, FindReferencesOutput> {

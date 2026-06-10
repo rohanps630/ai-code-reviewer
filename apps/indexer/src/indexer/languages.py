@@ -26,10 +26,25 @@ _EXTENSION_MAP: Final[dict[str, str]] = {
 
 
 def detect_language(path: Path) -> str | None:
-    """Return the tree-sitter grammar name for a path, or None if unsupported."""
+    """Detect the tree-sitter grammar name for a file based on its extension.
+
+    Args:
+        path: Path to the target file.
+
+    Returns:
+        The grammar name string (e.g., "python", "typescript") if supported,
+        or None if the extension is unknown.
+    """
     return _EXTENSION_MAP.get(path.suffix.lower())
 
 
 def is_supported(path: Path) -> bool:
-    """Whether the indexer knows how to chunk this file."""
+    """Determine whether the indexer supports chunking the given file.
+
+    Args:
+        path: Path to the target file.
+
+    Returns:
+        True if the file extension is supported, False otherwise.
+    """
     return detect_language(path) is not None

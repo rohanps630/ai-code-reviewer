@@ -75,7 +75,10 @@ class _FailureEnvelope(BaseModel):
 
 
 class SubprocessBridge:
-    """`AgentBridge`-shaped wrapper around `scripts/agent-bridge.mjs`."""
+    """`AgentBridge`-shaped wrapper that communicates with the TypeScript agent bridge script.
+
+    Spawns `node scripts/agent-bridge.mjs` as a subprocess to invoke the agent loop.
+    """
 
     def __init__(
         self,
@@ -141,9 +144,16 @@ class SubprocessBridge:
 def _parse_envelope(stdout: str, *, example_id: str) -> BridgeResult:
     """Parse the last non-empty line of stdout as a Bridge envelope.
 
-    The CLI writes its result as a single line; falling back to the
-    last line keeps us resilient to interleaved diagnostics that some
-    Node wrappers print before exiting.
+    Args:
+        stdout: Standard output string from the bridge subprocess.
+        example_id: The unique identifier of the evaluation example.
+
+    Returns:
+        A BridgeResult parsed from the successful JSON envelope.
+
+    Raises:
+        BridgeError: If the stdout contains no valid JSON, the envelope is missing
+            the 'ok' key, or is a failure envelope.
     """
     last_line = next(
         (line for line in reversed(stdout.splitlines()) if line.strip()),

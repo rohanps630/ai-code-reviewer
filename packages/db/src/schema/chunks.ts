@@ -40,6 +40,13 @@ import { repos } from "./repos.js";
  *   - `embedding`            voyage-code-3 vector(1024); nullable until
  *                            the embedding step lands the row.
  */
+/**
+ * Database table schema for document chunks used in vector/BM25 retrieval.
+ *
+ * @example
+ * import { chunks } from "@acr/db";
+ * const results = await db.select().from(chunks).limit(5);
+ */
 export const chunks = pgTable(
   "chunks",
   {

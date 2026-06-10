@@ -11,10 +11,15 @@ import { eq, reviews } from "@acr/db";
 import { db } from "@acr/db/client";
 import type { Langfuse, LangfuseSpanClient } from "langfuse";
 
+import { type SeqChunk, insertAgentEvents } from "@/lib/agent-events";
 import { serverEnv } from "@/lib/env";
 import { langfuseHooksAdapter } from "@/lib/langfuse-hooks-adapter";
 import { populateReviewCaches } from "@/lib/review-cache";
 import { stringifyError } from "@/lib/utils";
+
+// Flush persisted events in small batches so a refresh mid-stream can replay
+// recent progress without a DB write per chunk.
+const EVENT_FLUSH_BATCH = 8;
 
 /**
  * NDJSON stream for a cache-miss review: resolves the model provider,
@@ -35,8 +40,25 @@ export function createReviewStream(opts: {
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       const encoder = new TextEncoder();
+
+      // Tee the emitted stream into agent_events for later replay. Persistence
+      // is best-effort: a failed write logs and is dropped — it must never
+      // corrupt the live stream or the review row.
+      let seq = 0;
+      const pending: SeqChunk[] = [];
+      const flushEvents = async () => {
+        if (pending.length === 0) return;
+        const batch = pending.splice(0, pending.length);
+        try {
+          await insertAgentEvents(reviewId, batch);
+        } catch (err) {
+          console.error("[reviews] Failed to persist agent events:", stringifyError(err));
+        }
+      };
+
       const emit = (chunk: ReviewChunk) => {
         controller.enqueue(encoder.encode(`${JSON.stringify(chunk)}\n`));
+        pending.push({ seq: seq++, chunk });
       };
 
       let final: ReviewOutput | null = null;
@@ -89,7 +111,9 @@ export function createReviewStream(opts: {
             if (chunk.usage) usage = chunk.usage;
           }
           emit(chunk);
+          if (pending.length >= EVENT_FLUSH_BATCH) await flushEvents();
         }
+        await flushEvents();
 
         await db
           .update(reviews)
@@ -127,6 +151,7 @@ export function createReviewStream(opts: {
         span?.end({ level: "ERROR", statusMessage: stringifyError(err) });
         await langfuse?.flushAsync();
         emit({ type: "error", message: stringifyError(err) });
+        await flushEvents();
       } finally {
         controller.close();
       }

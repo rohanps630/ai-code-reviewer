@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, Wrench } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { ToolEvent } from "@/components/features/reviews/use-review-stream";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,15 @@ function truncate(val: unknown, max = 120): string {
 
 export function ActivityTimeline({ events }: { events: ToolEvent[] }) {
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const handleHash = () => {
+      if (window.location.hash.startsWith("#event-")) setOpen(true);
+    };
+    handleHash();
+    window.addEventListener("hashchange", handleHash);
+    return () => window.removeEventListener("hashchange", handleHash);
+  }, []);
 
   if (events.length === 0) return null;
 
@@ -36,7 +45,11 @@ export function ActivityTimeline({ events }: { events: ToolEvent[] }) {
         <div className="border-border/30 border-t px-3 pb-3">
           <ul className="flex flex-col gap-1.5 pt-2">
             {events.map((ev, i) => (
-              <li key={`${i}-${ev.name}`} className="flex items-start gap-2 font-mono text-xs">
+              <li
+                key={`${i}-${ev.name}`}
+                id={`event-${i}`}
+                className="flex scroll-mt-24 items-start gap-2 font-mono text-xs"
+              >
                 <span
                   className={cn(
                     "mt-0.5 inline-block size-1.5 shrink-0 rounded-full",

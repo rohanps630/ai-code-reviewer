@@ -12,7 +12,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Environment-backed settings for the Python jobs."""
+    """Environment-backed settings configuration for Python indexing and evaluation jobs."""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -29,5 +29,9 @@ class Settings(BaseSettings):
 
 
 def load_settings() -> Settings:
-    """Build a fresh Settings instance from the current process env."""
+    """Load configuration settings from environment variables and local .env files.
+
+    Returns:
+        A frozen Settings instance populated with environment values.
+    """
     return Settings()

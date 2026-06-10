@@ -1,41 +1,16 @@
 "use client";
 
-import type { ReviewChunk, ReviewOutput } from "@acr/agent";
+import type { ReviewChunk } from "@acr/agent";
 import { useCallback, useRef, useState } from "react";
 
-export type ReviewUsage = {
-  inputTokens: number;
-  outputTokens: number;
-  costUsd: number;
-  cacheReadTokens?: number;
-  cacheCreationTokens?: number;
-};
+import {
+  INITIAL_REVIEW_STREAM_STATE as INITIAL,
+  type ReviewStreamState,
+  applyChunk,
+} from "@/lib/review-stream-state";
 
-export type ToolEvent =
-  | { kind: "call"; name: string; input: unknown }
-  | { kind: "result"; name: string; output: unknown };
-
-export type ReviewStreamState = {
-  status: "idle" | "streaming" | "completed" | "failed";
-  text: string;
-  ticker: string[];
-  toolEvents: ToolEvent[];
-  final: ReviewOutput | null;
-  reviewId: string | null;
-  error: string | null;
-  usage: ReviewUsage | null;
-};
-
-const INITIAL: ReviewStreamState = {
-  status: "idle",
-  text: "",
-  ticker: [],
-  toolEvents: [],
-  final: null,
-  reviewId: null,
-  error: null,
-  usage: null,
-};
+// Re-exported so existing importers (ActivityTimeline, etc.) keep working.
+export type { ReviewStreamState, ReviewUsage, ToolEvent } from "@/lib/review-stream-state";
 
 export function useReviewStream() {
   const [state, setState] = useState<ReviewStreamState>(INITIAL);
@@ -127,37 +102,4 @@ export function useReviewStream() {
   }, []);
 
   return { ...state, run, reset, abort };
-}
-
-function applyChunk(state: ReviewStreamState, chunk: ReviewChunk): ReviewStreamState {
-  switch (chunk.type) {
-    case "status":
-      return { ...state, ticker: [...state.ticker, chunk.message] };
-    case "text":
-      return { ...state, text: state.text + chunk.delta };
-    case "error":
-      return { ...state, status: "failed", error: chunk.message };
-    case "tool_call":
-      return {
-        ...state,
-        toolEvents: [...state.toolEvents, { kind: "call", name: chunk.name, input: chunk.input }],
-      };
-    case "tool_result":
-      return {
-        ...state,
-        toolEvents: [
-          ...state.toolEvents,
-          { kind: "result", name: chunk.name, output: chunk.output },
-        ],
-      };
-    case "final":
-      return {
-        ...state,
-        final: chunk.output,
-        status: "completed",
-        usage: chunk.usage ?? null,
-      };
-    default:
-      return state;
-  }
 }
