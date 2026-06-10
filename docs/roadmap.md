@@ -116,6 +116,41 @@ Fine-tune a 7B model for a narrow sub-task.
 - Eval delta documented vs prompting the large model
 - ADR written on whether to keep the fine-tuned model in production
 
+## Phase 7 — GitHub-native review bot (proposed)
+
+> **Status: proposed.** See `docs/adr/006-github-native-review-delivery.md` for the decision and
+> the cut list (no SQLite layer, no self-push auto-commit). CI-first, daemon second.
+
+Take reviews to where PRs live: inline GitHub review comments, first from CI, then from a
+self-hostable daemon.
+
+**Milestone 1 — CI mode (the category change)**
+
+- New `packages/github`: PR diff fetcher, hunk-aware finding→line mapper, bulk review submitter
+  (one grouped `POST .../reviews` call)
+- `acr-review --pr <url>` CLI + GitHub Actions workflow using the ambient `GITHUB_TOKEN`
+- Ship criteria: open a PR on a test repo → one grouped inline review appears, no hosting involved
+
+**Milestone 2 — Suggestion blocks (prompt change — human-owned)**
+
+- New prompt version teaching ` ```suggestion ` output for fixable findings
+- Ship criteria: eval delta logged in `docs/prompts.md`; suggestions render with GitHub's
+  "Commit suggestion" button
+
+**Milestone 3 — Daemon mode**
+
+- GitHub App auth (installation tokens), `/api/webhooks/github` with HMAC verify + fast ack,
+  job queue/worker, Dockerfile + compose
+- Incremental review on `synchronize` (only new commits) and per-PR cost caps
+- Ship criteria: webhook-triggered review lands on a PR from a self-hosted container; pushing a
+  new commit reviews only the delta
+
+**Milestone 4 — Interactive PR chat**
+
+- `issue_comment` command parsing (`/ask`, `/explain`), thread-context reconstruction into agent
+  history
+- Ship criteria: a reply in a review thread answers with full thread + codebase context
+
 ## Sequencing rules
 
 - **Don't perfect each phase before moving on.** Get to Phase 4 (evals) fast — every later change needs evals to measure.
