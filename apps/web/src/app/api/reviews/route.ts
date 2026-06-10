@@ -1,47 +1,52 @@
-import crypto from "node:crypto";
-import {
-  CohereReranker,
-  HybridRetriever,
-  VoyageClient,
-  defaultE2BFactory,
-  resolveProviderForTier,
-  routeModel,
-  runReview,
-  toVectorLiteral,
-} from "@acr/agent";
-import type { HybridRetrieverDeps, ModelRequest, ReviewChunk, ReviewOutput } from "@acr/agent";
-import { eq, lt, reviews, semanticCache, sql } from "@acr/db";
+import { routeModel } from "@acr/agent";
+import type { ReviewOutput } from "@acr/agent";
+import { reviews } from "@acr/db";
 import { db } from "@acr/db/client";
 import { z } from "zod";
 
 import { checkAccessKey } from "@/lib/access-key";
-import { serverEnv } from "@/lib/env";
 import { getLangfuse } from "@/lib/langfuse";
 import { applyRateLimit } from "@/lib/rate-limit";
-import { redis } from "@/lib/redis";
-import { SEMANTIC_CACHE_SIMILARITY_THRESHOLD } from "@/lib/review-constants";
+import {
+  type CacheStatus,
+  exactCacheKey,
+  lookupExactCache,
+  lookupSemanticCache,
+  respondWithCachedReview,
+} from "@/lib/review-cache";
+import { createReviewStream } from "@/lib/review-stream";
+import { stringifyError } from "@/lib/utils";
 
 const BodySchema = z.object({
   diff: z.string().min(1, "diff must not be empty").max(500_000, "diff exceeds 500 KB limit"),
   model: z.enum(["haiku", "sonnet", "opus", "auto"]).default("auto"),
 });
 
-const FindingSchema = z.object({
-  category: z.enum(["bug", "perf", "security", "style", "logic"]),
-  severity: z.enum(["critical", "major", "minor"]),
-  summary: z.string(),
-  locationHint: z.string().optional(),
-  suggestion: z.string().optional(),
-});
+/** Persist a completed review row for a cache hit and return its id. */
+async function persistCachedReview(
+  diff: string,
+  model: string,
+  output: ReviewOutput,
+  cacheStatus: CacheStatus,
+): Promise<string> {
+  const [inserted] = await db
+    .insert(reviews)
+    .values({
+      diff,
+      model,
+      status: "completed",
+      output,
+      cache_status: cacheStatus,
+      input_tokens: 0,
+      output_tokens: 0,
+      cost_usd: "0",
+    })
+    .returning({ id: reviews.id });
 
-const ReviewOutputSchema = z.object({
-  summary: z.string(),
-  findings: z.array(FindingSchema),
-  confidence: z.enum(["high", "medium", "low"]),
-});
-
-function sha256(text: string): string {
-  return crypto.createHash("sha256").update(text).digest("hex");
+  if (!inserted?.id) {
+    throw new Error(`Failed to persist review record for ${cacheStatus} cache hit`);
+  }
+  return inserted.id;
 }
 
 export async function POST(req: Request) {
@@ -68,10 +73,7 @@ export async function POST(req: Request) {
 
   // 1. Model Routing (Phase 5)
   const selectedModel = requestModel === "auto" ? routeModel(diff) : requestModel;
-
-  // Hash diff + model for exact matching
-  const diffHash = sha256(diff);
-  const redisKey = `exact_cache:${selectedModel}:${diffHash}`;
+  const redisKey = exactCacheKey(selectedModel, diff);
 
   const langfuse = getLangfuse();
   const trace = langfuse?.trace({
@@ -79,159 +81,36 @@ export async function POST(req: Request) {
     metadata: { model: selectedModel },
   });
 
-  // Check exact-match cache (Redis)
-  const cachedExact = await redis.get(redisKey);
-  if (cachedExact) {
+  // 2. Check exact-match cache (Redis)
+  const exactOutput = await lookupExactCache(redisKey);
+  if (exactOutput) {
     try {
-      const parseResult = ReviewOutputSchema.safeParse(JSON.parse(cachedExact));
-      if (!parseResult.success) throw new Error("Cached review has invalid shape");
-      const cachedOutput = parseResult.data;
-
-      const [inserted] = await db
-        .insert(reviews)
-        .values({
-          diff,
-          model: selectedModel,
-          status: "completed",
-          output: cachedOutput,
-          cache_status: "exact",
-          input_tokens: 0,
-          output_tokens: 0,
-          cost_usd: "0",
-        })
-        .returning({ id: reviews.id });
-
-      if (!inserted?.id) throw new Error("Failed to persist review record for cache hit");
-      const reviewId = inserted.id;
+      const reviewId = await persistCachedReview(diff, selectedModel, exactOutput, "exact");
       trace?.update({ metadata: { reviewId, cacheStatus: "exact" } });
-
-      const stream = new ReadableStream<Uint8Array>({
-        async start(controller) {
-          const encoder = new TextEncoder();
-          const emit = (chunk: ReviewChunk) => {
-            controller.enqueue(encoder.encode(`${JSON.stringify(chunk)}\n`));
-          };
-          emit({ type: "status", message: "Exact cache hit! Retrieving cached review..." });
-          await new Promise((resolve) => setTimeout(resolve, 50));
-          emit({ type: "final", output: cachedOutput });
-          controller.close();
-        },
-      });
-
       await langfuse?.flushAsync();
-
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "application/x-ndjson; charset=utf-8",
-          "Cache-Control": "no-store",
-          "X-Review-Id": reviewId,
-        },
-      });
+      return respondWithCachedReview(exactOutput, "exact", reviewId);
     } catch (err) {
-      console.error("[reviews] Failed parsing or saving exact cache hit:", {
-        error: stringifyError(err),
-      });
+      console.error("[reviews] Failed saving exact cache hit:", { error: stringifyError(err) });
     }
   }
 
-  // 2. Check semantic cache (Postgres pgvector)
-  let queryEmbedding: number[] | null = null;
-  let cachedSemanticOutput: ReviewOutput | null = null;
-
-  try {
-    if (serverEnv.VOYAGE_API_KEY) {
-      const voyageClient = new VoyageClient({
-        apiKey: serverEnv.VOYAGE_API_KEY,
-        expectedDimensions: 1024,
-      });
-      queryEmbedding = await voyageClient.embedQuery(diff);
-      const vectorLiteral = toVectorLiteral(queryEmbedding);
-
-      const rows = (await db.execute(sql`
-        select
-          response,
-          embedding <=> ${vectorLiteral}::vector as distance
-        from semantic_cache
-        where expires_at > now()
-          and model = ${selectedModel}
-        order by embedding <=> ${vectorLiteral}::vector
-        limit 1
-      `)) as unknown as Array<{ response: string; distance: number }>;
-
-      // Fire-and-forget: purge expired rows while we have a DB connection.
-      // The Promise is intentionally not awaited — expiry cleanup is best-effort.
-      db.delete(semanticCache)
-        .where(lt(semanticCache.expires_at, new Date()))
-        .catch(() => undefined);
-
-      const hit = rows[0];
-      if (hit && Number(hit.distance) < SEMANTIC_CACHE_SIMILARITY_THRESHOLD) {
-        const parseResult = ReviewOutputSchema.safeParse(JSON.parse(hit.response));
-        if (parseResult.success) {
-          cachedSemanticOutput = parseResult.data;
-        } else {
-          console.error("[reviews] Semantic cache hit has invalid shape — ignoring:", {
-            issues: parseResult.error.flatten(),
-          });
-        }
-      }
-    }
-  } catch (err) {
-    console.error("[reviews] Semantic cache lookup failed:", { error: stringifyError(err) });
-  }
-
-  if (cachedSemanticOutput) {
-    const semanticOutput = cachedSemanticOutput;
+  // 3. Check semantic cache (Postgres pgvector)
+  const { embedding: queryEmbedding, output: semanticOutput } = await lookupSemanticCache(
+    diff,
+    selectedModel,
+  );
+  if (semanticOutput) {
     try {
-      const [inserted] = await db
-        .insert(reviews)
-        .values({
-          diff,
-          model: selectedModel,
-          status: "completed",
-          output: semanticOutput,
-          cache_status: "semantic",
-          input_tokens: 0,
-          output_tokens: 0,
-          cost_usd: "0",
-        })
-        .returning({ id: reviews.id });
-
-      if (!inserted?.id) throw new Error("Failed to persist review record for semantic cache hit");
-      const reviewId = inserted.id;
+      const reviewId = await persistCachedReview(diff, selectedModel, semanticOutput, "semantic");
       trace?.update({ metadata: { reviewId, cacheStatus: "semantic" } });
-
-      const stream = new ReadableStream<Uint8Array>({
-        async start(controller) {
-          const encoder = new TextEncoder();
-          const emit = (chunk: ReviewChunk) => {
-            controller.enqueue(encoder.encode(`${JSON.stringify(chunk)}\n`));
-          };
-          emit({
-            type: "status",
-            message: "Semantic cache hit (similarity > 95%)! Retrieving cached review...",
-          });
-          await new Promise((resolve) => setTimeout(resolve, 50));
-          emit({ type: "final", output: semanticOutput });
-          controller.close();
-        },
-      });
-
       await langfuse?.flushAsync();
-
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "application/x-ndjson; charset=utf-8",
-          "Cache-Control": "no-store",
-          "X-Review-Id": reviewId,
-        },
-      });
+      return respondWithCachedReview(semanticOutput, "semantic", reviewId);
     } catch (err) {
       console.error("[reviews] Failed saving semantic cache hit:", { error: stringifyError(err) });
     }
   }
 
-  // 3. Cache Miss: Run real agent loop
+  // 4. Cache Miss: Run real agent loop
   const [inserted] = await db
     .insert(reviews)
     .values({ diff, model: selectedModel, status: "pending" })
@@ -245,153 +124,14 @@ export async function POST(req: Request) {
   trace?.update({ metadata: { reviewId, cacheStatus: "miss" } });
   const span = trace?.span({ name: "agent-run" });
 
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const encoder = new TextEncoder();
-      const emit = (chunk: ReviewChunk) => {
-        controller.enqueue(encoder.encode(`${JSON.stringify(chunk)}\n`));
-      };
-
-      let final: ReviewOutput | null = null;
-      let usage: {
-        inputTokens: number;
-        outputTokens: number;
-        costUsd: number;
-        cacheReadTokens?: number;
-        cacheCreationTokens?: number;
-      } | null = null;
-
-      try {
-        await db.update(reviews).set({ status: "streaming" }).where(eq(reviews.id, reviewId));
-
-        const baseProvider = await resolveProviderForTier(selectedModel, serverEnv);
-
-        // Langfuse Traced Model Provider
-        const tracedProvider = {
-          provider: baseProvider.provider,
-          modelId: baseProvider.modelId,
-          async generate(request: ModelRequest) {
-            const generation = span?.generation({
-              name: "llm-call",
-              model: baseProvider.modelId,
-              input: request.messages,
-              modelParameters: { maxTokens: request.maxTokens },
-            });
-
-            try {
-              const res = await baseProvider.generate(request);
-              generation?.update({
-                output: res.text || res.toolCalls,
-                usage: {
-                  input: res.usage.inputTokens,
-                  output: res.usage.outputTokens,
-                },
-                metadata: {
-                  cacheReadTokens: res.usage.cacheReadTokens,
-                  cacheCreationTokens: res.usage.cacheCreationTokens,
-                },
-              });
-              return res;
-            } catch (err) {
-              generation?.update({
-                metadata: { error: stringifyError(err) },
-              });
-              throw err;
-            } finally {
-              generation?.end();
-            }
-          },
-        };
-
-        const embedder = new VoyageClient({
-          apiKey: serverEnv.VOYAGE_API_KEY ?? "",
-          expectedDimensions: 1024,
-        });
-        const reranker = serverEnv.COHERE_API_KEY
-          ? new CohereReranker({ apiKey: serverEnv.COHERE_API_KEY })
-          : undefined;
-        const retriever = new HybridRetriever({
-          embedder,
-          // why: Drizzle db satisfies the SqlExecutor structural contract
-          executor: db as unknown as HybridRetrieverDeps["executor"],
-          reranker,
-        });
-
-        const sandboxFactory = serverEnv.E2B_API_KEY
-          ? await defaultE2BFactory(serverEnv.E2B_API_KEY)
-          : undefined;
-
-        const deps = {
-          provider: tracedProvider,
-          retriever,
-          // why: Drizzle db satisfies the SqlExecutorLike structural contract (execute: (q: unknown) => Promise<unknown>)
-          executor: db as unknown as { execute: (query: unknown) => Promise<unknown> },
-          sandboxFactory,
-        };
-
-        const source = await pickSource(parsed.data, deps);
-        for await (const chunk of source) {
-          if (chunk.type === "final") {
-            final = chunk.output;
-            if (chunk.type === "final" && chunk.usage) {
-              usage = chunk.usage;
-            }
-          }
-          emit(chunk);
-        }
-
-        await db
-          .update(reviews)
-          .set({
-            status: "completed",
-            output: final,
-            input_tokens: usage ? usage.inputTokens : 0,
-            output_tokens: usage ? usage.outputTokens : 0,
-            cost_usd: usage ? usage.costUsd.toFixed(6) : "0",
-            cache_status: "miss",
-            prompt_cache_tokens: usage ? (usage.cacheReadTokens ?? 0) : 0,
-          })
-          .where(eq(reviews.id, reviewId));
-
-        span?.end();
-
-        // 4. Cache populate on success
-        if (final) {
-          const responseStr = JSON.stringify(final);
-          await redis.set(redisKey, responseStr, 7 * 24 * 60 * 60).catch(() => false);
-
-          if (queryEmbedding) {
-            try {
-              const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-              await db.insert(semanticCache).values({
-                diff,
-                model: selectedModel,
-                response: responseStr,
-                embedding: queryEmbedding,
-                expires_at: expiresAt,
-              });
-            } catch (err) {
-              console.error("[reviews] Failed to populate semantic cache:", {
-                error: stringifyError(err),
-              });
-            }
-          }
-        }
-
-        await langfuse?.flushAsync();
-      } catch (err) {
-        await db
-          .update(reviews)
-          .set({ status: "failed" })
-          .where(eq(reviews.id, reviewId))
-          .catch(() => undefined);
-        span?.end({ level: "ERROR", statusMessage: stringifyError(err) });
-        await langfuse?.flushAsync();
-        emit({ type: "error", message: stringifyError(err) });
-      } finally {
-        controller.close();
-      }
-    },
+  const stream = createReviewStream({
+    input: parsed.data,
+    selectedModel,
+    reviewId,
+    redisKey,
+    queryEmbedding,
+    span,
+    langfuse,
   });
 
   return new Response(stream, {
@@ -401,26 +141,4 @@ export async function POST(req: Request) {
       "X-Review-Id": reviewId,
     },
   });
-}
-
-async function pickSource(
-  input: { diff: string; model: "haiku" | "sonnet" | "opus" | "auto" },
-  deps?: Parameters<typeof runReview>[1],
-): Promise<AsyncIterable<ReviewChunk>> {
-  const gen = runReview({ diff: input.diff, model: input.model }, deps);
-  const first = await gen.next();
-  return prepend(first, gen);
-}
-
-async function* prepend(
-  first: IteratorResult<ReviewChunk, void>,
-  rest: AsyncGenerator<ReviewChunk, void, void>,
-): AsyncGenerator<ReviewChunk, void, void> {
-  if (!first.done) yield first.value;
-  for await (const chunk of rest) yield chunk;
-}
-
-function stringifyError(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return typeof err === "string" ? err : "Unknown error";
 }
