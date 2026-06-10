@@ -33,9 +33,31 @@ vi.mock("@acr/db", () => ({
   eq: (_col: unknown, id: string) => ({ id }),
 }));
 
-vi.mock("@acr/agent", () => {
+// Capture the deps the route hands to runReview so tests can assert on
+// the provider that the REAL resolution path produced.
+const captured = vi.hoisted(() => ({
+  providers: [] as Array<{ provider: string; modelId: string }>,
+}));
+
+// Spread the real module so the route exercises the REAL
+// resolveProviderForTier + routeModel (the seam that broke before).
+// Only the LLM loop itself is mocked (shape-only), plus VoyageClient —
+// its real constructor throws without an API key and embeddings are
+// not under test here.
+vi.mock("@acr/agent", async () => {
+  const actual = await vi.importActual<typeof import("@acr/agent")>("@acr/agent");
   return {
-    runReview: async function* (_input: unknown) {
+    ...actual,
+    runReview: async function* (
+      _input: unknown,
+      deps?: { provider?: { provider: string; modelId: string } },
+    ) {
+      if (deps?.provider) {
+        captured.providers.push({
+          provider: deps.provider.provider,
+          modelId: deps.provider.modelId,
+        });
+      }
       yield { type: "status", message: "Starting review..." } as const;
       yield { type: "text", delta: "Test review text" } as const;
       yield {
@@ -48,24 +70,18 @@ vi.mock("@acr/agent", () => {
         usage: { inputTokens: 10, outputTokens: 20, costUsd: 0.001 },
       };
     },
-    routeModel: (_diff: string) => "sonnet",
-    resolveProviderForTier: async (_tier: string, _env: unknown) => ({
-      provider: "anthropic",
-      modelId: "claude-sonnet-4-7",
-      generate: async () => ({
-        text: "dummy",
-        toolCalls: [],
-        usage: { inputTokens: 0, outputTokens: 0 },
-      }),
-    }),
     VoyageClient: class {
       embedQuery = async () => [0.1, 0.2];
     },
-    HybridRetriever: class {},
-    CohereReranker: class {},
-    defaultE2BFactory: async () => ({}),
-    toVectorLiteral: (arr: number[]) => `[${arr.join(",")}]`,
   };
+});
+
+// Fake ANTHROPIC_API_KEY so the real provider cascade resolves
+// deterministically to Anthropic. Everything else stays unset (no
+// Voyage/Redis/Cohere/E2B), keeping the cache layers disabled.
+vi.mock("@/lib/env", () => {
+  const serverEnv = { ANTHROPIC_API_KEY: "sk-ant-test-key" };
+  return { serverEnv, env: serverEnv, clientEnv: {} };
 });
 
 const langfuseSpans = vi.hoisted(() => ({
@@ -120,6 +136,7 @@ describe("POST /api/reviews", () => {
     dbState.updates.length = 0;
     langfuseSpans.traceCalls.length = 0;
     langfuseSpans.flushCalls = 0;
+    captured.providers.length = 0;
   });
   afterEach(() => vi.clearAllMocks());
 
@@ -168,10 +185,27 @@ describe("POST /api/reviews", () => {
     expect(langfuseSpans.flushCalls).toBeGreaterThan(0);
   });
 
-  it("defaults the model to sonnet", async () => {
+  it("routes 'auto' through the real routeModel (trivial diff → haiku)", async () => {
     const res = await POST(makeRequest({ diff: "x" }));
     await drainNdjson(res);
+    expect(dbState.inserted[0]?.model).toBe("haiku");
+  });
+
+  it("cache miss resolves the provider through the real cascade", async () => {
+    const res = await POST(makeRequest({ diff: "x", model: "sonnet" }));
+    expect(res.status).toBe(200);
+
+    const chunks = await drainNdjson(res);
+    // A resolution failure would surface as an error chunk, not final
+    expect(chunks.find((c) => c.type === "error")).toBeUndefined();
+    expect(chunks.find((c) => c.type === "final")).toBeDefined();
+
+    // Real resolveProviderForTier + real routeModel: with only
+    // ANTHROPIC_API_KEY set, "sonnet" must resolve to Anthropic.
     expect(dbState.inserted[0]?.model).toBe("sonnet");
+    expect(captured.providers).toHaveLength(1);
+    expect(captured.providers[0]?.provider).toBe("anthropic");
+    expect(captured.providers[0]?.modelId).toBe("claude-sonnet-4-7");
   });
 });
 

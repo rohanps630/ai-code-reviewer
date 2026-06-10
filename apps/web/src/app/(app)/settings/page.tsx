@@ -42,10 +42,12 @@ function ApiKeyField({
   label,
   placeholder,
   envVar,
+  disabled,
 }: {
   label: string;
   placeholder: string;
   envVar: string;
+  disabled?: boolean;
 }) {
   const [value, setValue] = useState("");
   const [visible, setVisible] = useState(false);
@@ -66,12 +68,14 @@ function ApiKeyField({
           placeholder={placeholder}
           value={value}
           onChange={(e) => setValue(e.target.value)}
+          disabled={disabled}
           className="pr-8 font-mono text-xs"
         />
         <button
           type="button"
           onClick={() => setVisible((v) => !v)}
-          className="-translate-y-1/2 absolute top-1/2 right-2 text-muted-foreground transition-colors hover:text-foreground"
+          disabled={disabled}
+          className="-translate-y-1/2 absolute top-1/2 right-2 text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
           aria-label={visible ? "Hide key" : "Show key"}
         >
           {visible ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
@@ -191,10 +195,25 @@ export default function SettingsPage() {
           description="Override default keys for each provider. Leave blank to use environment variables."
         />
         <div className="mt-4 flex flex-col gap-3">
-          <ApiKeyField label="Anthropic" placeholder="sk-ant-…" envVar="ANTHROPIC_API_KEY" />
-          <ApiKeyField label="OpenAI (fallback)" placeholder="sk-…" envVar="OPENAI_API_KEY" />
-          <ApiKeyField label="Voyage (embeddings)" placeholder="pa-…" envVar="VOYAGE_API_KEY" />
-          <ApiKeyField label="Cohere (reranker)" placeholder="…" envVar="COHERE_API_KEY" />
+          <ApiKeyField
+            label="Anthropic"
+            placeholder="sk-ant-…"
+            envVar="ANTHROPIC_API_KEY"
+            disabled
+          />
+          <ApiKeyField
+            label="OpenAI (fallback)"
+            placeholder="sk-…"
+            envVar="OPENAI_API_KEY"
+            disabled
+          />
+          <ApiKeyField
+            label="Voyage (embeddings)"
+            placeholder="pa-…"
+            envVar="VOYAGE_API_KEY"
+            disabled
+          />
+          <ApiKeyField label="Cohere (reranker)" placeholder="…" envVar="COHERE_API_KEY" disabled />
         </div>
         <div className="mt-4 flex justify-end">
           <Button size="sm" variant="outline" disabled>

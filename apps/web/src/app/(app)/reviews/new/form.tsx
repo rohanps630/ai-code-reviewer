@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
 import { ActivityTimeline } from "@/components/features/reviews/activity-timeline";
@@ -150,6 +150,12 @@ export function NewReviewForm({
   const [diff, setDiff] = useState(initialDiff ?? "");
   const [model, setModel] = useState<Model>(isModel(initialModel) ? initialModel : "auto");
   const stream = useReviewStream();
+  const { abort } = stream;
+
+  // Cancel any in-flight review request when navigating away.
+  useEffect(() => {
+    return () => abort();
+  }, [abort]);
 
   const diffSizeBytes = new Blob([diff]).size;
   const diffTooLarge = diffSizeBytes > MAX_DIFF_BYTES;
