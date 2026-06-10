@@ -2,7 +2,7 @@
 
 An AI agent that reviews GitHub pull requests using code-aware retrieval and tool use. Built as a portfolio project demonstrating production-grade AI integration engineering: hybrid retrieval (BM25 + vector + rerank), agentic loops, evals, observability, and cost optimization.
 
-> **Status**: 🚧 Phase 1 — Foundations
+> **Status**: 🎉 Phase 5 — Production concerns (Completed)
 
 ## Demo
 
