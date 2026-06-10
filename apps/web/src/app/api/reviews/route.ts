@@ -14,6 +14,7 @@ import { eq, lt, reviews, semanticCache, sql } from "@acr/db";
 import { db } from "@acr/db/client";
 import { z } from "zod";
 
+import { checkAccessKey } from "@/lib/access-key";
 import { serverEnv } from "@/lib/env";
 import { getLangfuse } from "@/lib/langfuse";
 import { applyRateLimit } from "@/lib/rate-limit";
@@ -44,6 +45,10 @@ function sha256(text: string): string {
 }
 
 export async function POST(req: Request) {
+  // Auth: check ACCESS_KEY if configured
+  const denied = checkAccessKey(req);
+  if (denied) return denied;
+
   // Rate limit: 10 requests per IP per minute (sliding window)
   const rl = await applyRateLimit(req);
   if (!rl.success) {

@@ -261,6 +261,15 @@ const tree = {
             label: "Python tests (indexer)",
             run: { cmd: "uv", args: ["run", "pytest"], cwd: INDEXER_DIR },
           },
+          {
+            label: "E2E smoke test (Playwright)",
+            run: {
+              cmd: "pnpm",
+              args: ["--filter", "@acr/web", "e2e"],
+              confirm:
+                "Runs Playwright smoke tests. Requires browser binaries (npx playwright install).",
+            },
+          },
         ],
       },
     },

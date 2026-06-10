@@ -1,6 +1,7 @@
 import { repos } from "@acr/db";
 import { z } from "zod";
 
+import { checkAccessKey } from "@/lib/access-key";
 import { applyRateLimit } from "@/lib/rate-limit";
 
 // ────────────────────────────────────────────────────────────────────
@@ -33,6 +34,10 @@ function parseGitHubUrl(url: string): { owner: string; name: string; canonicalUr
 // ────────────────────────────────────────────────────────────────────
 
 export async function POST(req: Request): Promise<Response> {
+  // Auth: check ACCESS_KEY if configured
+  const denied = checkAccessKey(req);
+  if (denied) return denied;
+
   const rl = await applyRateLimit(req);
   if (!rl.success) {
     return Response.json({ error: "Rate limit exceeded" }, { status: 429 });
