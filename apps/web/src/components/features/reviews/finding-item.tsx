@@ -1,8 +1,10 @@
 "use client";
 
 import type { Finding } from "@acr/agent";
-import { Check, Copy, MapPin } from "lucide-react";
+import { Check, ChevronDown, Copy, FileSearch, MapPin } from "lucide-react";
 import { useState } from "react";
+
+import type { EvidenceItem } from "@/lib/finding-evidence";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -47,7 +49,72 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-export function FindingItem({ finding }: { finding: Finding }) {
+function EvidenceSection({ evidence }: { evidence?: EvidenceItem[] }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="mt-3 rounded-lg border border-border/50 bg-muted/10">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between p-3 text-left font-medium text-muted-foreground text-xs transition-colors hover:text-foreground"
+      >
+        <span className="flex items-center gap-1.5">
+          <FileSearch className="size-3.5" />
+          Evidence
+          <Badge variant="outline" className="ml-1 h-4 border-border/50 px-1.5 text-[10px]">
+            {evidence ? evidence.length : 0}
+          </Badge>
+        </span>
+        <ChevronDown
+          className={cn("size-3.5 transition-transform duration-200", open && "rotate-180")}
+        />
+      </button>
+
+      {open && (
+        <div className="border-border/30 border-t p-3 text-xs">
+          {!evidence || evidence.length === 0 ? (
+            <p className="text-muted-foreground italic">no recorded evidence for this finding</p>
+          ) : (
+            <ul className="flex flex-col gap-3">
+              {evidence.map((item) => (
+                <li
+                  key={item.toolEventIndex}
+                  className="flex flex-col gap-1.5 rounded-md border border-border/40 bg-muted/20 p-2.5"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-mono text-[10px] text-muted-foreground">
+                      {item.path}
+                      {item.startLine
+                        ? `:${item.startLine}${item.endLine && item.endLine !== item.startLine ? `-${item.endLine}` : ""}`
+                        : ""}
+                    </span>
+                    <a
+                      href={`#event-${item.toolEventIndex}`}
+                      className="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] text-primary hover:underline"
+                    >
+                      {item.toolName}
+                    </a>
+                  </div>
+                  {item.snippet && (
+                    <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap break-words rounded bg-black/40 p-2 font-mono text-[10px] text-muted-foreground/90">
+                      {item.snippet}
+                    </pre>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function FindingItem({
+  finding,
+  evidence,
+}: { finding: Finding; evidence?: EvidenceItem[] }) {
   return (
     <li className="rounded-xl border border-border bg-card/40 p-4 text-sm">
       {/* Header row */}
@@ -79,6 +146,9 @@ export function FindingItem({ finding }: { finding: Finding }) {
           <p className="text-muted-foreground text-xs leading-relaxed">{finding.suggestion}</p>
         </div>
       ) : null}
+
+      {/* Evidence */}
+      <EvidenceSection evidence={evidence} />
     </li>
   );
 }
