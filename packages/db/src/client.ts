@@ -30,4 +30,12 @@ if (!serverEnv.DATABASE_URL) {
 // max: 10 is a safe default for a serverless/edge environment.
 const queryClient = postgres(serverEnv.DATABASE_URL, { max: 10 });
 
+/**
+ * Shared database client instance configured with the schema.
+ *
+ * @example
+ * import { db } from "@acr/db/client";
+ * import { repos } from "@acr/db";
+ * const results = await db.select().from(repos);
+ */
 export const db = drizzle(queryClient, { schema });

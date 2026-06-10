@@ -34,7 +34,23 @@ def index_repo(
     settings: Settings | None = None,
     db: IndexerDB | None = None,
 ) -> dict:
-    """Index a single repo end-to-end. Returns a stats dict."""
+    """Index a single repository end-to-end.
+
+    Clones the repository to a temporary directory, chunks all supported source files,
+    optionally generates contextual prefixes using Claude, calculates embeddings, and
+    persists the results into the database.
+
+    Args:
+        repo_url: The canonical URL of the GitHub repository to index.
+        settings: Configuration options. If omitted, loaded from settings.
+        db: Connection instance to the database. If omitted, a new connection is managed.
+
+    Returns:
+        A dictionary containing the indexing statistics (e.g., files scanned, chunks total).
+
+    Raises:
+        RuntimeError: If indexing or clone operation fails.
+    """
     cfg = settings or load_settings()
     own_db = db is None
     database = db or IndexerDB(cfg.database_url)

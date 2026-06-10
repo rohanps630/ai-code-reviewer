@@ -26,7 +26,11 @@ if TYPE_CHECKING:
 
 
 class IndexerDB:
-    """Synchronous Postgres writer for the indexer."""
+    """Synchronous Postgres writer for the indexer.
+
+    Manages a synchronous database connection pool using psycopg (v3) to read and
+    write documents and chunks for repository indexing.
+    """
 
     def __init__(self, dsn: str | None = None) -> None:
         if not dsn:
@@ -49,7 +53,14 @@ class IndexerDB:
     # ── repos ──────────────────────────────────────────────────────
 
     def get_repo_by_url(self, url: str) -> dict | None:
-        """Look up a repo row by canonical URL."""
+        """Look up a repository row by its canonical GitHub URL.
+
+        Args:
+            url: The canonical repository URL (e.g. 'https://github.com/owner/name').
+
+        Returns:
+            A dictionary containing the repo row columns if found, otherwise None.
+        """
         with self._conn.cursor() as cur:
             cur.execute("SELECT * FROM repos WHERE url = %s", (url,))
             return cur.fetchone()  # type: ignore[return-value]
@@ -61,6 +72,13 @@ class IndexerDB:
         status: str,
         last_indexed_commit: str | None = None,
     ) -> None:
+        """Update the indexing status of a repository in the database.
+
+        Args:
+            repo_id: The unique identifier (UUID) of the repository.
+            status: The new status ('pending' | 'indexing' | 'indexed' | 'failed').
+            last_indexed_commit: Optional commit hash (SHA) that was successfully indexed.
+        """
         with self._conn.cursor() as cur:
             cur.execute(
                 """
@@ -86,7 +104,18 @@ class IndexerDB:
         content_hash: str,
         size_bytes: int,
     ) -> str:
-        """Insert or update a document. Returns the document ID."""
+        """Insert or update a document record.
+
+        Args:
+            repo_id: The unique identifier (UUID) of the repository.
+            path: The repository-relative path of the file (e.g. 'src/main.py').
+            language: Detected tree-sitter language/grammar name.
+            content_hash: sha256 fingerprint of the file contents.
+            size_bytes: Size of the file in bytes.
+
+        Returns:
+            The unique identifier (UUID) of the upserted document.
+        """
         doc_id = str(uuid.uuid4())
         with self._conn.cursor() as cur:
             cur.execute(
@@ -111,7 +140,15 @@ class IndexerDB:
         return str(row["id"]) if row else doc_id  # type: ignore[index]
 
     def get_document_content_hash(self, repo_id: str, path: str) -> str | None:
-        """Return the stored content_hash for a document, or None."""
+        """Return the stored content_hash fingerprint for a document, if it exists.
+
+        Args:
+            repo_id: The unique identifier (UUID) of the repository.
+            path: The repository-relative path of the file.
+
+        Returns:
+            The content hash string if found, otherwise None.
+        """
         with self._conn.cursor() as cur:
             cur.execute(
                 "SELECT content_hash FROM documents WHERE repo_id = %s AND path = %s",
@@ -132,7 +169,19 @@ class IndexerDB:
     ) -> int:
         """Delete existing chunks for a document and insert new ones.
 
-        Returns the number of chunks inserted.
+        This runs as a single database transaction.
+
+        Args:
+            document_id: The unique identifier (UUID) of the document.
+            repo_id: The unique identifier (UUID) of the repository.
+            chunks: A list of Chunk models to insert.
+            embeddings: A list of embedding vectors matching the chunks.
+
+        Returns:
+            The number of chunks successfully inserted.
+
+        Raises:
+            ValueError: If chunks and embeddings lists differ in length.
         """
         if len(chunks) != len(embeddings):
             raise ValueError(

@@ -32,11 +32,17 @@ export type Result<T, E = string> = { ok: true; value: T } | { ok: false; error:
 /**
  * Lifecycle status of a code review.
  * Stored in the `reviews.status` column.
+ *
+ * @example
+ * const status: ReviewStatus = "completed";
  */
 export type ReviewStatus = "pending" | "streaming" | "completed" | "failed";
 
 /**
  * Severity level for a single review finding.
  * Used in the structured review output streamed to the client.
+ *
+ * @example
+ * const severity: FindingSeverity = "critical";
  */
 export type FindingSeverity = "critical" | "major" | "minor" | "suggestion";

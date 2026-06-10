@@ -139,6 +139,12 @@ const SUBMIT_REVIEW_DESCRIPTION =
 /**
  * Heuristic-based model router.
  * Routes based on diff size, files changed, and public API modifications.
+ *
+ * @param diff - The git diff content.
+ * @returns Target model tier string ('haiku' | 'sonnet' | 'opus').
+ *
+ * @example
+ * const tier = routeModel(diff);
  */
 export function routeModel(diff: string): "haiku" | "sonnet" | "opus" {
   const lines = diff.split("\n");
@@ -177,6 +183,18 @@ export function routeModel(diff: string): "haiku" | "sonnet" | "opus" {
   return "sonnet";
 }
 
+/**
+ * Runs the review loop generator for code review.
+ *
+ * @param input - The review request configuration and input.
+ * @param deps - Dependency injection block containing retriever, executor, provider, etc.
+ * @returns Async generator yielding ReviewChunks.
+ *
+ * @example
+ * for await (const chunk of runReview({ diff }, deps)) {
+ *   console.log(chunk);
+ * }
+ */
 export async function* runReview(
   input: ReviewInput,
   deps?: RunReviewDeps,

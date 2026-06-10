@@ -17,6 +17,13 @@ import { repos } from "./repos.js";
  *   - `size_bytes`     captured for skip-too-large policies (e.g. minified, vendored).
  *   - `last_modified`  git commit time of the file's last touch, when available.
  */
+/**
+ * Database table schema for documents (source files) inside a repository.
+ *
+ * @example
+ * import { documents } from "@acr/db";
+ * const results = await db.select().from(documents);
+ */
 export const documents = pgTable(
   "documents",
   {

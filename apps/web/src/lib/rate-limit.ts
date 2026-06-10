@@ -39,8 +39,14 @@ function getLimiter(): Ratelimit | null {
 }
 
 /**
- * Apply per-IP rate limiting. Returns `{ success: true }` when Redis is
- * not configured so the app still works in local dev without Upstash.
+ * Applies sliding-window rate limiting based on the requester's IP address.
+ *
+ * @param req - The incoming request object.
+ * @returns Rate limit status containing success status and window details.
+ *
+ * @example
+ * const { success } = await applyRateLimit(req);
+ * if (!success) return new Response("Rate limit exceeded", { status: 429 });
  */
 export async function applyRateLimit(
   req: Request,

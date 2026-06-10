@@ -128,6 +128,15 @@ const COMMAND_DENY_LIST: readonly string[] = [
   "scp ",
 ];
 
+/**
+ * Creates a tool to execute testing commands in an isolated E2B sandbox.
+ *
+ * @param factory - The sandbox creation factory.
+ * @returns A Tool instance configured to run commands.
+ *
+ * @example
+ * const runTestsTool = createRunTestsTool(sandboxFactory);
+ */
 export function createRunTestsTool(
   factory: RunTestsSandboxFactory,
 ): Tool<RunTestsInput, RunTestsOutput> {
@@ -199,8 +208,16 @@ function truncate(s: string, max: number): string {
   return `${s.slice(0, max)}\n…(truncated, ${s.length - max} more chars)`;
 }
 
-/** Default factory backed by the real E2B SDK. Constructed lazily so
- *  the SDK isn't required at import time. Server-only. */
+/**
+ * Default factory backed by the real E2B SDK. Constructed lazily so
+ * the SDK isn't required at import time. Server-only.
+ *
+ * @param apiKey - The API key for E2B service.
+ * @returns A factory object used to instantiate E2B sandboxes.
+ *
+ * @example
+ * const factory = await defaultE2BFactory("e2b_api_key_...");
+ */
 export async function defaultE2BFactory(apiKey: string): Promise<RunTestsSandboxFactory> {
   if (!apiKey) throw new Error("defaultE2BFactory: apiKey is required");
   const { Sandbox } = await import("@e2b/code-interpreter");

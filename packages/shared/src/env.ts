@@ -121,6 +121,10 @@ function parseOrPassthrough<S extends z.ZodType>(
 /**
  * Client-safe environment variables (NEXT_PUBLIC_*).
  * Safe to import in browser bundles.
+ *
+ * @example
+ * import { clientEnv } from "@acr/shared/env";
+ * console.log(clientEnv.NEXT_PUBLIC_APP_URL);
  */
 export const clientEnv = parseOrPassthrough(clientSchema, {
   NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -132,6 +136,10 @@ export const clientEnv = parseOrPassthrough(clientSchema, {
 /**
  * Server-only environment variables.
  * Never import this in client-side code.
+ *
+ * @example
+ * import { serverEnv } from "@acr/shared/env";
+ * console.log(serverEnv.DATABASE_URL);
  */
 export const serverEnv = parseOrPassthrough(serverSchema, {
   NODE_ENV: process.env.NODE_ENV,
@@ -164,5 +172,10 @@ export const serverEnv = parseOrPassthrough(serverSchema, {
  * Combined env object — server-only. Merges both schemas for convenience
  * in server-side code that needs both client and server vars.
  * Never import in browser bundles.
+ *
+ * @example
+ * import { env } from "@acr/shared/env";
+ * console.log(env.DATABASE_URL);
+ * console.log(env.NEXT_PUBLIC_APP_URL);
  */
 export const env = { ...clientEnv, ...serverEnv };

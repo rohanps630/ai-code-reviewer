@@ -12,6 +12,13 @@ import { integer, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle
  *   - `cost_usd`  numeric(10,6): NEVER float for money (coding-style.md)
  *   - `status`    mirrors the ReviewStatus type in @acr/shared/types
  */
+/**
+ * Database table schema for tracking code review requests and results.
+ *
+ * @example
+ * import { reviews } from "@acr/db";
+ * const results = await db.select().from(reviews);
+ */
 export const reviews = pgTable("reviews", {
   id: uuid("id").primaryKey().defaultRandom(),
 

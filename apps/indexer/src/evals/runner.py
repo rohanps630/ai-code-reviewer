@@ -145,7 +145,20 @@ def run_eval(
     on_example_start: Callable[[EvalExample], None] | None = None,
     on_example_done: Callable[[EvalExample, ExampleResult], None] | None = None,
 ) -> list[ExampleResult]:
-    """Run the bridge + scorers + judge over every example."""
+    """Run the agent bridge, matching scorers, and LLM judge over every evaluation example.
+
+    Args:
+        examples: List of EvalExample datasets to evaluate.
+        bridge: Agent bridge callable interface.
+        judge_client: Anthropic client instance used to query the judge model.
+        judge_model: Model name string for the LLM judge.
+        output_dir: Optional path to directory where raw trace files will be written.
+        on_example_start: Optional hook callback invoked before each example runs.
+        on_example_done: Optional hook callback invoked after each example finishes.
+
+    Returns:
+        A list of ExampleResult dataclasses summarizing the evaluation scores.
+    """
     results: list[ExampleResult] = []
 
     for example in examples:

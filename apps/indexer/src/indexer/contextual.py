@@ -70,7 +70,10 @@ class _RetryableAPIError(RuntimeError):
 
 
 class Contextualizer:
-    """Generates a short contextual prefix for a chunk inside a document."""
+    """Generates a short contextual prefix for a chunk inside a document.
+
+    Uses Claude model calls to construct 1-2 sentence orientation prefixes.
+    """
 
     def __init__(
         self,
@@ -90,7 +93,20 @@ class Contextualizer:
         document_text: str,
         file_path: str,
     ) -> str:
-        """Return a 1–2 sentence contextual prefix for `chunk_text`."""
+        """Return a 1–2 sentence contextual prefix for `chunk_text` within a document.
+
+        Args:
+            chunk_text: The content of the snippet to orient.
+            document_text: The full parent document text.
+            file_path: The file path to provide as context to Claude.
+
+        Returns:
+            A string containing the 1-2 sentence contextual orientation.
+
+        Raises:
+            ValueError: If chunk_text is empty.
+            ContextualizationError: If the Anthropic API call fails or times out.
+        """
         if not chunk_text.strip():
             raise ValueError("chunk_text must be non-empty")
 
@@ -171,9 +187,16 @@ class Contextualizer:
 
 
 def contextualizer_from_env(**kwargs: object) -> Contextualizer:
-    """Construct a Contextualizer using ANTHROPIC_API_KEY from `shared.config`.
+    """Construct a Contextualizer using credentials loaded from the environment settings.
 
-    Fails loud with ContextualizationError if the key isn't configured.
+    Args:
+        **kwargs: Overrides to pass to the Contextualizer constructor.
+
+    Returns:
+        An initialized Contextualizer instance.
+
+    Raises:
+        ContextualizationError: If ANTHROPIC_API_KEY is not configured in the settings.
     """
     settings = load_settings()
     if not settings.anthropic_api_key:

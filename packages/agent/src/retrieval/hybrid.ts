@@ -97,10 +97,18 @@ export class HybridRetriever {
   }
 }
 
-/** Convenience: build a {@link HybridRetriever} backed by env-configured
- *  defaults. Reads VOYAGE_API_KEY through `@acr/shared/env` and the db
- *  client through `@acr/db/client`. Server-only — never import on the
- *  client. */
+/**
+ * Executes a code search query against the hybrid retriever using default dependencies.
+ * Reads VOYAGE_API_KEY through `@acr/shared/env` and the db client through `@acr/db/client`.
+ * Server-only — never import on the client.
+ *
+ * @param query - The search query term.
+ * @param options - Search configuration overrides.
+ * @returns A promise resolving to an array of SearchResults.
+ *
+ * @example
+ * const results = await searchCode("findSession");
+ */
 export async function searchCode(
   query: string,
   options: SearchOptions = {},

@@ -97,6 +97,9 @@ const INPUT_SUMMARY_MAX = 200;
  * `Tool<TInput, TOutput>` (so `createSearchCodeTool(...)` et al. pass
  * directly) while staying covariant enough to hold a mixed array without
  * casts at the call site.
+ *
+ * @example
+ * const searchTool: AgentTool = createSearchCodeTool(retriever);
  */
 export interface AgentTool {
   readonly name: string;
@@ -110,6 +113,16 @@ export interface AgentTool {
 /** Minimal structural shape of the Zod validators a tool carries. */
 type ZodLike = { safeParse: (input: unknown) => unknown };
 
+/**
+ * Configuration options for constructing a new Agent instance.
+ *
+ * @example
+ * const config: AgentConfig = {
+ *   model: "claude-3-5-sonnet-20241022",
+ *   tools: [searchTool],
+ *   systemPrompt: "You are a senior code reviewer."
+ * };
+ */
 export interface AgentConfig {
   /** A provider object, or a model-id string resolved by prefix. */
   readonly model: ModelLike;
@@ -219,6 +232,13 @@ export class Agent {
    * Run the agentic loop to completion and return the model's final text.
    * A thin drain of {@link stream}: it consumes every event and returns the
    * `final` event's text. Throws the same errors `stream` does.
+   *
+   * @param input - The search prompt/message or message list.
+   * @param options - Runtime parameters (e.g. AbortSignal).
+   * @returns The final response text.
+   *
+   * @example
+   * const text = await agent.run("Review this diff: ...");
    */
   async run(input: string | readonly ModelMessage[], options?: AgentRunOptions): Promise<string> {
     let text = "";
@@ -233,6 +253,17 @@ export class Agent {
    * per-run `runId` and a `timestamp`. On failure a `run_error` event is
    * emitted and then the error is thrown (so `for await` consumers see the
    * event, and the throw still propagates).
+   *
+   * @param input - The search prompt/message or message list.
+   * @param options - Runtime parameters (e.g. AbortSignal).
+   * @returns An async generator yielding typed AgentEvents.
+   *
+   * @example
+   * for await (const event of agent.stream("Review this diff: ...")) {
+   *   if (event.type === "tool_call") {
+   *     console.log(`Calling tool: ${event.name}`);
+   *   }
+   * }
    */
   async *stream(
     input: string | readonly ModelMessage[],

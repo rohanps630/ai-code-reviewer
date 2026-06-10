@@ -82,6 +82,15 @@ export interface SearchCodeRetriever {
   search: (query: string, options?: { repoId?: string; limit?: number }) => Promise<SearchResult[]>;
 }
 
+/**
+ * Creates a search code tool that searches the indexed codebases.
+ *
+ * @param retriever - The code search retriever engine.
+ * @returns A Tool instance configured for code search queries.
+ *
+ * @example
+ * const searchTool = createSearchCodeTool(hybridRetriever);
+ */
 export function createSearchCodeTool(
   retriever: SearchCodeRetriever,
 ): Tool<SearchCodeInput, SearchCodeOutput> {

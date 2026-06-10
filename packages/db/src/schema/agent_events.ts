@@ -29,6 +29,13 @@ import { reviews } from "./reviews.js";
  *   - `type`       the ReviewChunk discriminant (mirrors @acr/agent ReviewChunk).
  *   - `payload`    jsonb: the full ReviewChunk, replayed verbatim by the UI.
  */
+/**
+ * Database table schema for persisting agent execution events.
+ *
+ * @example
+ * import { agentEvents } from "@acr/db";
+ * const results = await db.select().from(agentEvents).limit(5);
+ */
 export const agentEvents = pgTable(
   "agent_events",
   {
