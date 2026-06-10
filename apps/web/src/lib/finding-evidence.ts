@@ -1,5 +1,6 @@
-import type { Finding, ReviewChunk } from "@acr/agent";
+import type { Finding } from "@acr/agent";
 import { z } from "zod";
+import type { ToolEvent } from "./review-stream-state";
 
 export type EvidenceReason = "exact_line_match" | "partial_line_overlap" | "file_match";
 
@@ -64,51 +65,49 @@ export function parseLocationHint(
   return { path, startLine, endLine };
 }
 
-function parseCandidates(chunks: ReviewChunk[]): EvidenceCandidate[] {
+function parseCandidates(toolEvents: ToolEvent[]): EvidenceCandidate[] {
   const candidates: EvidenceCandidate[] = [];
-  let toolEventIndex = 0;
 
-  for (const chunk of chunks) {
-    if (chunk.type === "tool_call" || chunk.type === "tool_result") {
-      const currentIndex = toolEventIndex++;
-      if (chunk.type === "tool_result") {
-        if (chunk.name === "search_code") {
-          const parsed = SearchCodeOutputSchema.safeParse(chunk.output);
-          if (parsed.success && parsed.data.hits) {
-            for (const hit of parsed.data.hits) {
-              candidates.push({
-                toolEventIndex: currentIndex,
-                toolName: chunk.name,
-                path: hit.path,
-                startLine: hit.start_line,
-                endLine: hit.end_line,
-                snippet: hit.content_with_context,
-              });
-            }
-          }
-        } else if (chunk.name === "read_file") {
-          const parsed = ReadFileOutputSchema.safeParse(chunk.output);
-          if (parsed.success && parsed.data.found && parsed.data.path) {
+  for (let index = 0; index < toolEvents.length; index++) {
+    const event = toolEvents[index];
+    if (!event) continue;
+    if (event.kind === "result") {
+      if (event.name === "search_code") {
+        const parsed = SearchCodeOutputSchema.safeParse(event.output);
+        if (parsed.success && parsed.data.hits) {
+          for (const hit of parsed.data.hits) {
             candidates.push({
-              toolEventIndex: currentIndex,
-              toolName: chunk.name,
-              path: parsed.data.path,
-              // No lines means whole file
+              toolEventIndex: index,
+              toolName: event.name,
+              path: hit.path,
+              startLine: hit.start_line,
+              endLine: hit.end_line,
+              snippet: hit.content_with_context,
             });
           }
-        } else if (chunk.name === "find_references") {
-          const parsed = FindReferencesOutputSchema.safeParse(chunk.output);
-          if (parsed.success && parsed.data.references) {
-            for (const ref of parsed.data.references) {
-              candidates.push({
-                toolEventIndex: currentIndex,
-                toolName: chunk.name,
-                path: ref.path,
-                startLine: ref.start_line,
-                endLine: ref.end_line,
-                snippet: ref.snippet,
-              });
-            }
+        }
+      } else if (event.name === "read_file") {
+        const parsed = ReadFileOutputSchema.safeParse(event.output);
+        if (parsed.success && parsed.data.found && parsed.data.path) {
+          candidates.push({
+            toolEventIndex: index,
+            toolName: event.name,
+            path: parsed.data.path,
+            // No lines means whole file
+          });
+        }
+      } else if (event.name === "find_references") {
+        const parsed = FindReferencesOutputSchema.safeParse(event.output);
+        if (parsed.success && parsed.data.references) {
+          for (const ref of parsed.data.references) {
+            candidates.push({
+              toolEventIndex: index,
+              toolName: event.name,
+              path: ref.path,
+              startLine: ref.start_line,
+              endLine: ref.end_line,
+              snippet: ref.snippet,
+            });
           }
         }
       }
@@ -125,8 +124,8 @@ function parseCandidates(chunks: ReviewChunk[]): EvidenceCandidate[] {
  * the untrusted JSON payloads from `agent_events` and matches them against finding
  * location hints.
  */
-export function correlateEvidence(findings: Finding[], chunks: ReviewChunk[]): EvidenceItem[][] {
-  const candidates = parseCandidates(chunks);
+export function correlateEvidence(findings: Finding[], toolEvents: ToolEvent[]): EvidenceItem[][] {
+  const candidates = parseCandidates(toolEvents);
 
   return findings.map((finding) => {
     const hint = parseLocationHint(finding.locationHint);

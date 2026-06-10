@@ -1,7 +1,5 @@
 import { routeModel } from "@acr/agent";
 import type { ReviewOutput } from "@acr/agent";
-import { reviews } from "@acr/db";
-import { db } from "@acr/db/client";
 import { z } from "zod";
 
 import { checkAccessKey } from "@/lib/access-key";
@@ -29,6 +27,8 @@ async function persistCachedReview(
   output: ReviewOutput,
   cacheStatus: CacheStatus,
 ): Promise<string> {
+  const { db } = await import("@acr/db/client");
+  const { reviews } = await import("@acr/db");
   const [inserted] = await db
     .insert(reviews)
     .values({
@@ -111,6 +111,8 @@ export async function POST(req: Request) {
   }
 
   // 4. Cache Miss: Run real agent loop
+  const { db } = await import("@acr/db/client");
+  const { reviews } = await import("@acr/db");
   const [inserted] = await db
     .insert(reviews)
     .values({ diff, model: selectedModel, status: "pending" })

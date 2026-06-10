@@ -39,13 +39,13 @@ describe("review-submitter", () => {
 
     expect(mockCreateReview).toHaveBeenCalledTimes(1);
     const callArg = mockCreateReview.mock.calls[0][0];
-    
+
     expect(callArg.owner).toBe("test");
     expect(callArg.repo).toBe("test");
     expect(callArg.pull_number).toBe(1);
     expect(callArg.commit_id).toBe("sha123");
     expect(callArg.event).toBe("COMMENT");
-    
+
     // Exactly 30 inline comments
     expect(callArg.comments).toHaveLength(30);
     expect(callArg.comments[0].path).toBe("file0.ts");

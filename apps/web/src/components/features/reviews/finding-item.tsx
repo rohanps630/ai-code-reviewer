@@ -77,9 +77,9 @@ function EvidenceSection({ evidence }: { evidence?: EvidenceItem[] }) {
             <p className="text-muted-foreground italic">no recorded evidence for this finding</p>
           ) : (
             <ul className="flex flex-col gap-3">
-              {evidence.map((item) => (
+              {evidence.map((item, index) => (
                 <li
-                  key={item.toolEventIndex}
+                  key={`${item.toolEventIndex}-${item.path}-${item.startLine ?? 0}-${index}`}
                   className="flex flex-col gap-1.5 rounded-md border border-border/40 bg-muted/20 p-2.5"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">

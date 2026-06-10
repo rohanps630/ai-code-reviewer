@@ -418,18 +418,36 @@ const tree = {
           {
             label: "Review a PR (Dry Run)",
             action: async () => {
-              const url = await rl.question(`${cyan("?")} PR URL (https://github.com/.../pull/123): `);
+              const url = await rl.question(
+                `${cyan("?")} PR URL (https://github.com/.../pull/123): `,
+              );
               if (!url.trim()) return;
-              await runCommand({ cmd: "pnpm", args: ["--filter", "@acr/cli", "exec", "acr-review", "--pr", url.trim(), "--dry-run"] });
+              await runCommand({
+                cmd: "pnpm",
+                args: [
+                  "--filter",
+                  "@acr/cli",
+                  "exec",
+                  "acr-review",
+                  "--pr",
+                  url.trim(),
+                  "--dry-run",
+                ],
+              });
             },
           },
           {
             label: "Review a PR (Live Post)",
             action: async () => {
-              const url = await rl.question(`${cyan("?")} PR URL (https://github.com/.../pull/123): `);
+              const url = await rl.question(
+                `${cyan("?")} PR URL (https://github.com/.../pull/123): `,
+              );
               if (!url.trim()) return;
               if (await confirm("This will actually post a review to GitHub. Proceed?")) {
-                await runCommand({ cmd: "pnpm", args: ["--filter", "@acr/cli", "exec", "acr-review", "--pr", url.trim()] });
+                await runCommand({
+                  cmd: "pnpm",
+                  args: ["--filter", "@acr/cli", "exec", "acr-review", "--pr", url.trim()],
+                });
               }
             },
           },

@@ -13,6 +13,7 @@ import { ReviewPoller } from "@/components/features/reviews/review-poller";
 import { Badge } from "@/components/ui/badge";
 import { loadAgentEvents } from "@/lib/agent-events";
 import { type EvidenceItem, correlateEvidence } from "@/lib/finding-evidence";
+import { reconstructState } from "@/lib/review-stream-state";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -51,8 +52,10 @@ export default async function ReviewDetailPage({ params }: { params: Promise<{ i
   const cost = formatCost(review.cost_usd);
 
   const findingEvidenceMap = new Map<Finding, EvidenceItem[]>();
-  if (output && events) {
-    const evidences = correlateEvidence(output.findings, events);
+  let evidences: EvidenceItem[][] = [];
+  if (output && Array.isArray(output.findings)) {
+    const state = reconstructState(events);
+    evidences = correlateEvidence(output.findings, state.toolEvents);
     output.findings.forEach((f, i) => findingEvidenceMap.set(f, evidences[i] ?? []));
   }
 

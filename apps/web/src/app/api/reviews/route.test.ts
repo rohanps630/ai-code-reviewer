@@ -5,17 +5,30 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const dbState = vi.hoisted(() => ({
   inserted: [] as Array<{ id: string; diff: string; model: string; status: string }>,
   updates: [] as Array<{ id: string; patch: Record<string, unknown> }>,
+  events: [] as Array<{ review_id: string; seq: number; type: string; payload: unknown }>,
 }));
 
 vi.mock("@acr/db/client", () => {
   const insert = (_table: unknown) => ({
-    values: (row: { diff: string; model: string; status: string }) => ({
-      returning: async (_cols: unknown) => {
+    values: (row: unknown) => {
+      // detect if we are inserting into agentEvents (which uses array of rows) vs reviews (which uses single row)
+      if (Array.isArray(row)) {
+        dbState.events.push(...row);
+        const p = Promise.resolve();
+        return p;
+      }
+
+      // otherwise it's reviews
+      const p = Promise.resolve() as Promise<void> & {
+        returning: (cols: unknown) => Promise<Array<{ id: string }>>;
+      };
+      p.returning = async (_cols: unknown) => {
         const id = `00000000-0000-0000-0000-${(dbState.inserted.length + 1).toString().padStart(12, "0")}`;
-        dbState.inserted.push({ id, ...row });
+        dbState.inserted.push({ id, ...(row as { diff: string; model: string; status: string }) });
         return [{ id }];
-      },
-    }),
+      };
+      return p;
+    },
   });
   const update = (_table: unknown) => ({
     set: (patch: Record<string, unknown>) => ({
@@ -30,6 +43,8 @@ vi.mock("@acr/db/client", () => {
 
 vi.mock("@acr/db", () => ({
   reviews: { id: "id-col" },
+  agentEvents: { payload: "payload", review_id: "review_id", seq: "seq" },
+  asc: (c: unknown) => c,
   eq: (_col: unknown, id: string) => ({ id }),
 }));
 
@@ -134,6 +149,7 @@ describe("POST /api/reviews", () => {
   beforeEach(() => {
     dbState.inserted.length = 0;
     dbState.updates.length = 0;
+    dbState.events.length = 0;
     langfuseSpans.traceCalls.length = 0;
     langfuseSpans.flushCalls = 0;
     captured.providers.length = 0;
@@ -175,6 +191,10 @@ describe("POST /api/reviews", () => {
     const finalUpdate = dbState.updates.at(-1);
     expect(finalUpdate?.patch.status).toBe("completed");
     expect(finalUpdate?.patch.output).toBeDefined();
+
+    // Asserts events were inserted
+    expect(dbState.events.length).toBeGreaterThan(0);
+    expect(dbState.events[0]?.type).toBe("status");
   });
 
   it("invokes the Langfuse client", async () => {

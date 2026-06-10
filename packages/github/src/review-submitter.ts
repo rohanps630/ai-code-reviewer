@@ -18,25 +18,38 @@ export const ReviewSubmitOptionsSchema = z.object({
         severity: z.string(),
         suggestion: z.string().optional(),
       }),
-    })
+    }),
   ),
 });
 
 export type ReviewSubmitOptions = z.infer<typeof ReviewSubmitOptionsSchema>;
 
-export async function submitReview(options: ReviewSubmitOptions): Promise<void> {
-  const { owner, repo, pullNumber, token, headSha, summary, findings } = ReviewSubmitOptionsSchema.parse(options);
-  const octokit = new Octokit({ auth: token });
+export type ReviewComment = {
+  path: string;
+  side: "RIGHT" | "LEFT";
+  line: number;
+  start_line?: number;
+  start_side?: "RIGHT" | "LEFT";
+  body: string;
+};
 
-  let body = `${summary}\n\n`;
+export type ReviewPayload = {
+  body: string;
+  comments: ReviewComment[];
+};
 
-  const comments: Array<{ path: string; side: "RIGHT" | "LEFT"; line: number; start_line?: number; start_side?: "RIGHT" | "LEFT"; body: string }> = [];
+export function buildReviewPayload(
+  options: Pick<ReviewSubmitOptions, "summary" | "findings">,
+): ReviewPayload {
+  let body = `${options.summary}\n\n`;
+
+  const comments: ReviewComment[] = [];
   const demoted: string[] = [];
 
-  for (const finding of findings) {
+  for (const finding of options.findings) {
     const { mapped, original } = finding;
     const severityPrefix = `**[${original.severity.toUpperCase()} - ${original.category}]**`;
-    
+
     let commentBody = `${severityPrefix} ${original.summary}`;
     if (original.suggestion) {
       commentBody += `\n\n\`\`\`suggestion\n${original.suggestion}\n\`\`\``;
@@ -44,7 +57,7 @@ export async function submitReview(options: ReviewSubmitOptions): Promise<void> 
 
     if (mapped.kind === "inline") {
       if (comments.length < 30) {
-        const comment: any = {
+        const comment: ReviewComment = {
           path: mapped.path,
           side: mapped.side,
           line: mapped.line,
@@ -67,13 +80,22 @@ export async function submitReview(options: ReviewSubmitOptions): Promise<void> 
     body += `### Additional Findings\n\n${demoted.join("\n")}\n`;
   }
 
+  return { body, comments };
+}
+
+export async function submitReview(options: ReviewSubmitOptions): Promise<void> {
+  const { owner, repo, pullNumber, token, headSha } = ReviewSubmitOptionsSchema.parse(options);
+  const octokit = new Octokit({ auth: token });
+
+  const payload = buildReviewPayload(options);
+
   await octokit.rest.pulls.createReview({
     owner,
     repo,
     pull_number: pullNumber,
     commit_id: headSha,
     event: "COMMENT",
-    body,
-    comments,
+    body: payload.body,
+    comments: payload.comments,
   });
 }

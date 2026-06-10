@@ -9,7 +9,14 @@ export interface CommentableLocation {
 }
 
 export type MappedFinding =
-  | { kind: "inline"; path: string; line: number; side: "RIGHT" | "LEFT"; start_line?: number; start_side?: "RIGHT" | "LEFT" }
+  | {
+      kind: "inline";
+      path: string;
+      line: number;
+      side: "RIGHT" | "LEFT";
+      start_line?: number;
+      start_side?: "RIGHT" | "LEFT";
+    }
   | { kind: "demoted"; reason: string };
 
 export interface FindingInput {
@@ -27,52 +34,58 @@ export class CommentableSet {
   constructor(files: PrFile[]) {
     for (const file of files) {
       if (!file.patch) continue;
-      
+
       const rightLines = new Set<number>();
       const leftLines = new Set<number>();
 
       const hunkRegex = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/gm;
-      let match;
+      let match: RegExpExecArray | null = hunkRegex.exec(file.patch);
       let lastIndex = 0;
       const hunks: { oldStart: number; newStart: number; content: string }[] = [];
 
-      while ((match = hunkRegex.exec(file.patch)) !== null) {
+      while (match !== null) {
         if (lastIndex > 0 && hunks.length > 0) {
-          hunks[hunks.length - 1]!.content = file.patch.slice(lastIndex, match.index);
+          const lastHunk = hunks[hunks.length - 1];
+          if (lastHunk) {
+            lastHunk.content = file.patch.slice(lastIndex, match.index);
+          }
         }
         hunks.push({
-          oldStart: parseInt(match[1] as string, 10),
-          newStart: parseInt(match[2] as string, 10),
+          oldStart: Number.parseInt(match[1] as string, 10),
+          newStart: Number.parseInt(match[2] as string, 10),
           content: "",
         });
         lastIndex = hunkRegex.lastIndex;
+        match = hunkRegex.exec(file.patch);
       }
       if (hunks.length > 0) {
-        hunks[hunks.length - 1]!.content = file.patch.slice(lastIndex);
+        const lastHunk = hunks[hunks.length - 1];
+        if (lastHunk) {
+          lastHunk.content = file.patch.slice(lastIndex);
+        }
       }
 
       for (const hunk of hunks) {
         let oldLine = hunk.oldStart;
         let newLine = hunk.newStart;
-        
-        const lines = hunk.content.split('\n');
+
+        const lines = hunk.content.split("\n");
         for (const line of lines) {
-          if (line === '' && lines.indexOf(line) === 0) continue; // skip leading empty line after @@
-          if (line.startsWith('-')) {
+          if (line === "" && lines.indexOf(line) === 0) continue; // skip leading empty line after @@
+          if (line.startsWith("-")) {
             leftLines.add(oldLine);
             oldLine++;
-          } else if (line.startsWith('+')) {
+          } else if (line.startsWith("+")) {
             rightLines.add(newLine);
             newLine++;
-          } else if (line.startsWith(' ') || line === '') {
+          } else if (line.startsWith(" ") || line === "") {
             // context line
             leftLines.add(oldLine);
             rightLines.add(newLine);
             oldLine++;
             newLine++;
-          } else if (line.startsWith('\\')) {
+          } else if (line.startsWith("\\")) {
             // \ No newline at end of file
-            continue;
           }
         }
       }
@@ -100,8 +113,8 @@ export function mapFinding(finding: FindingInput, commentableSet: CommentableSet
   }
 
   const path = match[1] as string;
-  const line1 = parseInt(match[2] as string, 10);
-  const line2 = match[3] ? parseInt(match[3] as string, 10) : undefined;
+  const line1 = Number.parseInt(match[2] as string, 10);
+  const line2 = match[3] ? Number.parseInt(match[3] as string, 10) : undefined;
 
   // We map multiline comments if both lines are within hunks
   let start_line: number | undefined;
@@ -120,21 +133,35 @@ export function mapFinding(finding: FindingInput, commentableSet: CommentableSet
   }
 
   // Heuristic: prioritize RIGHT side because agents usually search the new code
-  const endSide = commentableSet.hasLine(path, line, "RIGHT") ? "RIGHT" : commentableSet.hasLine(path, line, "LEFT") ? "LEFT" : undefined;
-  
+  const endSide = commentableSet.hasLine(path, line, "RIGHT")
+    ? "RIGHT"
+    : commentableSet.hasLine(path, line, "LEFT")
+      ? "LEFT"
+      : undefined;
+
   if (!endSide) {
     return { kind: "demoted", reason: `Line ${line} in ${path} is outside the patch hunks` };
   }
 
   let startSide: "RIGHT" | "LEFT" | undefined = undefined;
   if (start_line !== undefined) {
-    startSide = commentableSet.hasLine(path, start_line, "RIGHT") ? "RIGHT" : commentableSet.hasLine(path, start_line, "LEFT") ? "LEFT" : undefined;
+    startSide = commentableSet.hasLine(path, start_line, "RIGHT")
+      ? "RIGHT"
+      : commentableSet.hasLine(path, start_line, "LEFT")
+        ? "LEFT"
+        : undefined;
     if (!startSide) {
-      return { kind: "demoted", reason: `Start line ${start_line} in ${path} is outside the patch hunks` };
+      return {
+        kind: "demoted",
+        reason: `Start line ${start_line} in ${path} is outside the patch hunks`,
+      };
     }
     // GitHub API requires start_line and line to be on the same side
     if (startSide !== endSide) {
-       return { kind: "demoted", reason: `Start line ${start_line} and end line ${line} are on different sides of the diff` };
+      return {
+        kind: "demoted",
+        reason: `Start line ${start_line} and end line ${line} are on different sides of the diff`,
+      };
     }
   }
 
@@ -144,6 +171,9 @@ export function mapFinding(finding: FindingInput, commentableSet: CommentableSet
     line,
     side: endSide as "RIGHT" | "LEFT",
     start_line: start_line !== line ? start_line : undefined,
-    start_side: (start_line !== undefined && start_line !== line ? startSide : undefined) as "RIGHT" | "LEFT" | undefined,
+    start_side: (start_line !== undefined && start_line !== line ? startSide : undefined) as
+      | "RIGHT"
+      | "LEFT"
+      | undefined,
   };
 }

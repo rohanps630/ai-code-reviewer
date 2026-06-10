@@ -2,6 +2,7 @@ import type { Finding, ReviewChunk } from "@acr/agent";
 import { describe, expect, it } from "vitest";
 
 import { correlateEvidence, parseLocationHint } from "./finding-evidence";
+import { reconstructState } from "./review-stream-state";
 
 describe("parseLocationHint", () => {
   it("parses path only", () => {
@@ -52,7 +53,7 @@ describe("correlateEvidence", () => {
       }, // index 1
     ];
 
-    const result = correlateEvidence(findings, chunks);
+    const result = correlateEvidence(findings, reconstructState(chunks).toolEvents);
     expect(result[0]).toBeDefined();
     expect(result[0]?.[0]).toMatchObject({
       toolEventIndex: 1,
@@ -68,7 +69,7 @@ describe("correlateEvidence", () => {
       { type: "tool_result", name: "read_file", output: { found: true, path: "src/foo.ts" } }, // 1
     ];
 
-    const result = correlateEvidence(findings, chunks);
+    const result = correlateEvidence(findings, reconstructState(chunks).toolEvents);
     expect(result[0]).toBeDefined();
     expect(result[0]?.[0]).toMatchObject({
       toolEventIndex: 1,
@@ -88,7 +89,7 @@ describe("correlateEvidence", () => {
       },
     ];
 
-    const result = correlateEvidence(findings, chunks);
+    const result = correlateEvidence(findings, reconstructState(chunks).toolEvents);
     expect(result[0]?.[0]?.reason).toBe("partial_line_overlap");
   });
 
@@ -99,7 +100,7 @@ describe("correlateEvidence", () => {
       { type: "tool_result", name: "search_code", output: { garbage: true } },
     ];
 
-    const result = correlateEvidence(findings, chunks);
+    const result = correlateEvidence(findings, reconstructState(chunks).toolEvents);
     expect(result[0]).toHaveLength(0); // No evidence
   });
 
@@ -122,7 +123,7 @@ describe("correlateEvidence", () => {
       }, // exact
     ];
 
-    const result = correlateEvidence(findings, chunks);
+    const result = correlateEvidence(findings, reconstructState(chunks).toolEvents);
     expect(result[0]).toBeDefined();
     expect(result[0]?.length).toBe(3);
     expect(result[0]?.[0]?.reason).toBe("exact_line_match");

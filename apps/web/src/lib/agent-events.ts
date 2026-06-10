@@ -1,6 +1,5 @@
 import type { ReviewChunk } from "@acr/agent";
 import { agentEvents, asc, eq } from "@acr/db";
-import { db } from "@acr/db/client";
 
 /**
  * Persistence for the review event stream (`agent_events`).
@@ -15,6 +14,7 @@ export type SeqChunk = { seq: number; chunk: ReviewChunk };
 /** Insert a batch of ordered events for a review. */
 export async function insertAgentEvents(reviewId: string, events: SeqChunk[]): Promise<void> {
   if (events.length === 0) return;
+  const { db } = await import("@acr/db/client");
   await db.insert(agentEvents).values(
     events.map((e) => ({
       review_id: reviewId,
@@ -27,6 +27,7 @@ export async function insertAgentEvents(reviewId: string, events: SeqChunk[]): P
 
 /** Load a review's persisted event stream, ordered by seq, as ReviewChunks. */
 export async function loadAgentEvents(reviewId: string): Promise<ReviewChunk[]> {
+  const { db } = await import("@acr/db/client");
   const rows = await db
     .select({ payload: agentEvents.payload })
     .from(agentEvents)

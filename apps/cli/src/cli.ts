@@ -1,8 +1,15 @@
 #!/usr/bin/env node
-// biome-ignore lint/suspicious/noConsole: <explanation>
+// biome-ignore lint/suspicious/noConsole: CLI tool needs to print output
 import { parseArgs } from "node:util";
 import { anthropic, runReview } from "@acr/agent";
-import { CommentableSet, fetchPr, mapFinding, submitReview, type FindingInput } from "@acr/github";
+import {
+  CommentableSet,
+  type FindingInput,
+  buildReviewPayload,
+  fetchPr,
+  mapFinding,
+  submitReview,
+} from "@acr/github";
 import { LocalRetriever, LocalSqlExecutor } from "./local/index.js";
 
 async function main() {
@@ -44,7 +51,12 @@ async function main() {
   }
   const pr = await fetchPr({ owner, repo, pullNumber, token });
 
-  const diff = pr.files.map((f: { previous_filename?: string; filename: string; patch?: string }) => `--- a/${f.previous_filename || f.filename}\n+++ b/${f.filename}\n${f.patch}`).join('\n\n');
+  const diff = pr.files
+    .map(
+      (f: { previous_filename?: string; filename: string; patch?: string }) =>
+        `--- a/${f.previous_filename || f.filename}\n+++ b/${f.filename}\n${f.patch}`,
+    )
+    .join("\n\n");
   const commentableSet = new CommentableSet(pr.files);
 
   const provider = anthropic("claude-3-5-sonnet-20241022", { apiKey });
@@ -83,8 +95,14 @@ async function main() {
   }));
 
   if (values["dry-run"]) {
+    const payload = buildReviewPayload({
+      summary: output.summary,
+      findings: mappedFindings,
+    });
+    console.log(JSON.stringify(payload, null, 2));
     process.exit(0);
   }
+
   await submitReview({
     owner: owner as string,
     repo: repo as string,
