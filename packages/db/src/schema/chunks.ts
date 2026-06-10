@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  check,
   index,
   integer,
   pgTable,
@@ -87,5 +88,9 @@ export const chunks = pgTable(
     // is added by the migration's raw-SQL tail (Drizzle has no tsvector
     // column type yet).
     index("chunks_embedding_hnsw_idx").using("hnsw", table.embedding.op("vector_cosine_ops")),
+    check(
+      "chunks_symbol_kind_check",
+      sql`${table.symbol_kind} IS NULL OR ${table.symbol_kind} IN ('function', 'class', 'method', 'module', 'block')`,
+    ),
   ],
 );

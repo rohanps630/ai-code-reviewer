@@ -26,6 +26,7 @@
  * wires Voyage + Cohere + the db client.
  */
 
+import type { sql } from "@acr/db";
 import { bm25Search } from "./bm25.js";
 import { type Vector, VoyageClient } from "./embeddings.js";
 import { CohereReranker, type Reranker } from "./rerank.js";
@@ -38,7 +39,7 @@ export interface QueryEmbedder {
 }
 
 export interface SqlExecutor {
-  execute: (query: unknown) => Promise<unknown>;
+  execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
 }
 
 export type HybridRetrieverDeps = {
@@ -52,16 +53,26 @@ export type HybridRetrieverDeps = {
 export class HybridRetriever {
   constructor(private readonly deps: HybridRetrieverDeps) {}
 
+  /** Maximum query length accepted by the retriever. plainto_tsquery handles
+   *  operators safely, but extremely long strings add unnecessary Postgres
+   *  overhead and can indicate a prompt-injection attempt. */
+  static readonly MAX_QUERY_LENGTH = 2_000;
+
   async search(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
     const trimmed = query.trim();
     if (!trimmed) return [];
+    if (trimmed.length > HybridRetriever.MAX_QUERY_LENGTH) {
+      throw new Error(
+        `search query too long: ${trimmed.length} chars (max ${HybridRetriever.MAX_QUERY_LENGTH})`,
+      );
+    }
 
     const candidatesPerLane = options.candidatesPerLane ?? DEFAULT_SEARCH_OPTIONS.candidatesPerLane;
     const limit = options.limit ?? DEFAULT_SEARCH_OPTIONS.limit;
     const rrfK = options.rrfK ?? DEFAULT_SEARCH_OPTIONS.rrfK;
 
     const [bm25Hits, queryVector] = await Promise.all([
-      bm25Search(this.deps.executor as Parameters<typeof bm25Search>[0], {
+      bm25Search(this.deps.executor, {
         query: trimmed,
         limit: candidatesPerLane,
         repoId: options.repoId,
@@ -69,14 +80,11 @@ export class HybridRetriever {
       this.deps.embedder.embedQuery(trimmed),
     ]);
 
-    const vectorHits = await vectorSearch(
-      this.deps.executor as Parameters<typeof vectorSearch>[0],
-      {
-        queryVector,
-        limit: candidatesPerLane,
-        repoId: options.repoId,
-      },
-    );
+    const vectorHits = await vectorSearch(this.deps.executor, {
+      queryVector,
+      limit: candidatesPerLane,
+      repoId: options.repoId,
+    });
 
     // Without a reranker the RRF cap IS the final cap.
     // With a reranker we let RRF emit a wider candidate pool (up to

@@ -22,6 +22,13 @@
       "when": 1781035282253,
       "tag": "0002_sad_kree",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1749513600000,
+      "tag": "0003_chunks_symbol_kind_check",
+      "breakpoints": true
     }
   ]
 }

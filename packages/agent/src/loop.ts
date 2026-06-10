@@ -266,6 +266,10 @@ async function* runReviewWithDeps(
   const costCap = deps.costCapUsd ?? COST_CAP_USD;
 
   // Build per-call tool registry.
+  // why: Tool<SpecificIn, SpecificOut> is not assignable to Tool<unknown, unknown> due to
+  // function-parameter contravariance — the cast is safe because buildToolRegistry only
+  // reads name/description/inputSchema/inputValidator/outputValidator/execute at a widened
+  // level and never calls execute with an unconstrained unknown.
   type WidenedTool = Parameters<typeof buildToolRegistry>[0][number];
   const tools: WidenedTool[] = [
     createSearchCodeTool(deps.retriever) as unknown as WidenedTool,
@@ -321,6 +325,11 @@ async function* runReviewWithDeps(
     totalCacheCreationTokens += response.usage.cacheCreationTokens ?? 0;
 
     const pricing = PRICING_USD_PER_MTOK[deps.provider.modelId];
+    if (!pricing) {
+      console.warn(
+        `[agent] No pricing data for model "${deps.provider.modelId}" — cost tracking disabled for this run.`,
+      );
+    }
     if (pricing) {
       const cacheRead = response.usage.cacheReadTokens ?? 0;
       const cacheWrite = response.usage.cacheCreationTokens ?? 0;
@@ -435,6 +444,10 @@ export function buildOpeningMessage(input: ReviewInput): string {
   return `Review the following diff. Use the available tools to gather context as needed. When you have enough information, call \`submit_review\` with your final findings.\n${repoCtx}\n<diff>\n${sanitizeUntrustedText(input.diff)}\n</diff>`;
 }
 
+const VALID_CATEGORIES = ["bug", "perf", "security", "style", "logic"] as const;
+const VALID_SEVERITIES = ["critical", "major", "minor"] as const;
+const VALID_CONFIDENCES = ["high", "medium", "low"] as const;
+
 /** Light runtime guard on the model's submit_review input. */
 export function validateReviewOutput(raw: unknown): ReviewOutput {
   if (!raw || typeof raw !== "object") {
@@ -447,8 +460,38 @@ export function validateReviewOutput(raw: unknown): ReviewOutput {
   if (!Array.isArray(obj.findings)) {
     throw new Error("submit_review.input.findings must be an array");
   }
-  if (typeof obj.confidence !== "string") {
-    throw new Error("submit_review.input.confidence must be a string");
+  if (
+    typeof obj.confidence !== "string" ||
+    !VALID_CONFIDENCES.includes(obj.confidence as (typeof VALID_CONFIDENCES)[number])
+  ) {
+    throw new Error(
+      `submit_review.input.confidence must be one of: ${VALID_CONFIDENCES.join(", ")}`,
+    );
+  }
+  for (const [i, finding] of obj.findings.entries()) {
+    if (!finding || typeof finding !== "object") {
+      throw new Error(`submit_review.input.findings[${i}] must be an object`);
+    }
+    const f = finding as Record<string, unknown>;
+    if (
+      typeof f.category !== "string" ||
+      !VALID_CATEGORIES.includes(f.category as (typeof VALID_CATEGORIES)[number])
+    ) {
+      throw new Error(
+        `submit_review.input.findings[${i}].category must be one of: ${VALID_CATEGORIES.join(", ")}`,
+      );
+    }
+    if (
+      typeof f.severity !== "string" ||
+      !VALID_SEVERITIES.includes(f.severity as (typeof VALID_SEVERITIES)[number])
+    ) {
+      throw new Error(
+        `submit_review.input.findings[${i}].severity must be one of: ${VALID_SEVERITIES.join(", ")}`,
+      );
+    }
+    if (typeof f.summary !== "string") {
+      throw new Error(`submit_review.input.findings[${i}].summary must be a string`);
+    }
   }
   return {
     summary: obj.summary,
@@ -469,9 +512,19 @@ async function defaultDeps(tier: string): Promise<RunReviewDeps> {
   const [{ serverEnv }, { db }] = await Promise.all([
     import("@acr/shared/env"),
     import("@acr/db/client"),
-  ]);
+  ]).catch((err: unknown) => {
+    throw new Error(
+      `Failed to load required modules in defaultDeps: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  });
 
-  const { anthropic, groq, openai, google, ollama } = await import("./providers/index.js");
+  const { anthropic, groq, openai, google, ollama } = await import("./providers/index.js").catch(
+    (err: unknown) => {
+      throw new Error(
+        `Failed to load providers: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    },
+  );
 
   let provider: ModelProvider;
 
@@ -503,7 +556,11 @@ async function defaultDeps(tier: string): Promise<RunReviewDeps> {
       reranker,
     });
   } else {
-    // No VOYAGE_API_KEY — use a no-op retriever (evals / local runs without a real index)
+    // No VOYAGE_API_KEY — use a no-op retriever (evals / local runs without a real index).
+    // All searches return empty results; RAG context will be absent from reviews.
+    console.warn(
+      "[agent] VOYAGE_API_KEY not set — retrieval is disabled. All search queries will return empty results.",
+    );
     retriever = { search: async () => [] };
   }
 

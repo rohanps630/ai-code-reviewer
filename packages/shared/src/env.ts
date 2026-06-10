@@ -104,9 +104,15 @@ function parseOrPassthrough<S extends z.ZodType>(
 ): z.infer<S> {
   if (skipValidation) {
     const result = schema.safeParse(source);
+    if (!result.success) {
+      console.warn(
+        "[env] Validation skipped — missing or invalid vars:",
+        result.error.flatten().fieldErrors,
+      );
+    }
     return (result.success ? result.data : source) as z.infer<S>;
   }
-  return schema.parse(source) as z.infer<S>;
+  return schema.parse(source);
 }
 
 /**

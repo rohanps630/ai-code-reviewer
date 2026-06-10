@@ -42,6 +42,10 @@ export type VoyageClientOptions = {
   model?: string;
   timeoutMs?: number;
   maxAttempts?: number;
+  /** When set, each returned embedding is validated to have exactly this many
+   *  dimensions. voyage-code-3 always returns 1024; passing this catches any
+   *  model misconfiguration before the wrong-dimension vector hits pgvector. */
+  expectedDimensions?: number;
   /** Injectable for tests; defaults to global fetch. */
   fetchImpl?: typeof fetch;
 };
@@ -53,6 +57,7 @@ export class VoyageClient {
   private readonly model: string;
   private readonly timeoutMs: number;
   private readonly maxAttempts: number;
+  private readonly expectedDimensions: number | undefined;
   private readonly fetchImpl: typeof fetch;
 
   constructor(opts: VoyageClientOptions) {
@@ -61,6 +66,7 @@ export class VoyageClient {
     this.model = opts.model ?? DEFAULT_MODEL;
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.maxAttempts = opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+    this.expectedDimensions = opts.expectedDimensions;
     this.fetchImpl = opts.fetchImpl ?? globalThis.fetch;
   }
 
@@ -137,7 +143,13 @@ export class VoyageClient {
       if (!Array.isArray(item.embedding)) {
         throw new EmbeddingError("Voyage response item missing 'embedding'");
       }
-      vectors.push(item.embedding as Vector);
+      const vec = item.embedding as Vector;
+      if (this.expectedDimensions !== undefined && vec.length !== this.expectedDimensions) {
+        throw new EmbeddingError(
+          `Voyage returned embedding with ${vec.length} dimensions; expected ${this.expectedDimensions}`,
+        );
+      }
+      vectors.push(vec);
     }
     if (vectors.length !== input.length) {
       throw new EmbeddingError(

@@ -75,11 +75,21 @@ function neutralToOAI(msg: ModelMessage): OAIMessageParam {
   if (msg.role === "tool") {
     return { role: "tool", tool_call_id: msg.toolCallId, content: msg.content };
   }
-  const toolCalls = msg.toolCalls.map((call) => ({
-    id: call.id,
-    type: "function" as const,
-    function: { name: call.name, arguments: JSON.stringify(call.input ?? {}) },
-  }));
+  const toolCalls = msg.toolCalls.map((call) => {
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(call.input ?? {});
+    } catch (err) {
+      throw new Error(
+        `Tool-call input for "${call.name}" is not JSON-serializable: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    return {
+      id: call.id,
+      type: "function" as const,
+      function: { name: call.name, arguments: serialized },
+    };
+  });
   return {
     role: "assistant",
     content: msg.content || null,

@@ -9,19 +9,33 @@ import {
   runReview,
   toVectorLiteral,
 } from "@acr/agent";
-import type { ModelRequest, ReviewChunk, ReviewOutput } from "@acr/agent";
-import { eq, reviews, semanticCache, sql } from "@acr/db";
+import type { HybridRetrieverDeps, ModelRequest, ReviewChunk, ReviewOutput } from "@acr/agent";
+import { eq, lt, reviews, semanticCache, sql } from "@acr/db";
 import { db } from "@acr/db/client";
 import { z } from "zod";
 
 import { serverEnv } from "@/lib/env";
 import { getLangfuse } from "@/lib/langfuse";
 import { redis } from "@/lib/redis";
-import { placeholderReview } from "./placeholder";
+import { SEMANTIC_CACHE_SIMILARITY_THRESHOLD } from "@/lib/review-constants";
 
 const BodySchema = z.object({
   diff: z.string().min(1, "diff must not be empty"),
   model: z.enum(["haiku", "sonnet", "opus", "auto"]).default("auto"),
+});
+
+const FindingSchema = z.object({
+  category: z.enum(["bug", "perf", "security", "style", "logic"]),
+  severity: z.enum(["critical", "major", "minor"]),
+  summary: z.string(),
+  locationHint: z.string().optional(),
+  suggestion: z.string().optional(),
+});
+
+const ReviewOutputSchema = z.object({
+  summary: z.string(),
+  findings: z.array(FindingSchema),
+  confidence: z.enum(["high", "medium", "low"]),
 });
 
 function sha256(text: string): string {
@@ -57,7 +71,9 @@ export async function POST(req: Request) {
   const cachedExact = await redis.get(redisKey);
   if (cachedExact) {
     try {
-      const cachedOutput = JSON.parse(cachedExact) as ReviewOutput;
+      const parseResult = ReviewOutputSchema.safeParse(JSON.parse(cachedExact));
+      if (!parseResult.success) throw new Error("Cached review has invalid shape");
+      const cachedOutput = parseResult.data;
 
       const [inserted] = await db
         .insert(reviews)
@@ -73,7 +89,8 @@ export async function POST(req: Request) {
         })
         .returning({ id: reviews.id });
 
-      const reviewId = inserted?.id || crypto.randomUUID();
+      if (!inserted?.id) throw new Error("Failed to persist review record for cache hit");
+      const reviewId = inserted.id;
       trace?.update({ metadata: { reviewId, cacheStatus: "exact" } });
 
       const stream = new ReadableStream<Uint8Array>({
@@ -99,7 +116,9 @@ export async function POST(req: Request) {
         },
       });
     } catch (err) {
-      console.error("Failed parsing or saving exact cache hit:", err);
+      console.error("[reviews] Failed parsing or saving exact cache hit:", {
+        error: stringifyError(err),
+      });
     }
   }
 
@@ -109,11 +128,13 @@ export async function POST(req: Request) {
 
   try {
     if (serverEnv.VOYAGE_API_KEY) {
-      const voyageClient = new VoyageClient({ apiKey: serverEnv.VOYAGE_API_KEY });
+      const voyageClient = new VoyageClient({
+        apiKey: serverEnv.VOYAGE_API_KEY,
+        expectedDimensions: 1024,
+      });
       queryEmbedding = await voyageClient.embedQuery(diff);
       const vectorLiteral = toVectorLiteral(queryEmbedding);
 
-      // Search semantic_cache table for nearest neighbor (distance < 0.05 corresponds to similarity > 0.95)
       const rows = (await db.execute(sql`
         select
           response,
@@ -125,13 +146,26 @@ export async function POST(req: Request) {
         limit 1
       `)) as unknown as Array<{ response: string; distance: number }>;
 
+      // Fire-and-forget: purge expired rows while we have a DB connection.
+      // The Promise is intentionally not awaited — expiry cleanup is best-effort.
+      db.delete(semanticCache)
+        .where(lt(semanticCache.expires_at, new Date()))
+        .catch(() => undefined);
+
       const hit = rows[0];
-      if (hit && Number(hit.distance) < 0.05) {
-        cachedSemanticOutput = JSON.parse(hit.response) as ReviewOutput;
+      if (hit && Number(hit.distance) < SEMANTIC_CACHE_SIMILARITY_THRESHOLD) {
+        const parseResult = ReviewOutputSchema.safeParse(JSON.parse(hit.response));
+        if (parseResult.success) {
+          cachedSemanticOutput = parseResult.data;
+        } else {
+          console.error("[reviews] Semantic cache hit has invalid shape — ignoring:", {
+            issues: parseResult.error.flatten(),
+          });
+        }
       }
     }
   } catch (err) {
-    console.error("Semantic cache lookup failed:", err);
+    console.error("[reviews] Semantic cache lookup failed:", { error: stringifyError(err) });
   }
 
   if (cachedSemanticOutput) {
@@ -151,7 +185,8 @@ export async function POST(req: Request) {
         })
         .returning({ id: reviews.id });
 
-      const reviewId = inserted?.id || crypto.randomUUID();
+      if (!inserted?.id) throw new Error("Failed to persist review record for semantic cache hit");
+      const reviewId = inserted.id;
       trace?.update({ metadata: { reviewId, cacheStatus: "semantic" } });
 
       const stream = new ReadableStream<Uint8Array>({
@@ -180,7 +215,7 @@ export async function POST(req: Request) {
         },
       });
     } catch (err) {
-      console.error("Failed saving semantic cache hit:", err);
+      console.error("[reviews] Failed saving semantic cache hit:", { error: stringifyError(err) });
     }
   }
 
@@ -256,15 +291,17 @@ export async function POST(req: Request) {
           },
         };
 
-        const embedder = new VoyageClient({ apiKey: serverEnv.VOYAGE_API_KEY ?? "" });
+        const embedder = new VoyageClient({
+          apiKey: serverEnv.VOYAGE_API_KEY ?? "",
+          expectedDimensions: 1024,
+        });
         const reranker = serverEnv.COHERE_API_KEY
           ? new CohereReranker({ apiKey: serverEnv.COHERE_API_KEY })
           : undefined;
         const retriever = new HybridRetriever({
           embedder,
-          // why: Drizzle db conforms structurally to HybridRetriever SqlExecutor contract
-          // biome-ignore lint/suspicious/noExplicitAny: Drizzle db conforms structurally to HybridRetriever SqlExecutor contract
-          executor: db as any,
+          // why: Drizzle db satisfies the SqlExecutor structural contract
+          executor: db as unknown as HybridRetrieverDeps["executor"],
           reranker,
         });
 
@@ -275,9 +312,8 @@ export async function POST(req: Request) {
         const deps = {
           provider: tracedProvider,
           retriever,
-          // why: Drizzle db conforms structurally to loop SqlExecutor contract
-          // biome-ignore lint/suspicious/noExplicitAny: Drizzle db conforms structurally to loop SqlExecutor contract
-          executor: db as any,
+          // why: Drizzle db satisfies the SqlExecutorLike structural contract (execute: (q: unknown) => Promise<unknown>)
+          executor: db as unknown as { execute: (query: unknown) => Promise<unknown> },
           sandboxFactory,
         };
 
@@ -323,7 +359,9 @@ export async function POST(req: Request) {
                 expires_at: expiresAt,
               });
             } catch (err) {
-              console.error("Failed to populate semantic cache:", err);
+              console.error("[reviews] Failed to populate semantic cache:", {
+                error: stringifyError(err),
+              });
             }
           }
         }
@@ -357,15 +395,9 @@ async function pickSource(
   input: { diff: string; model: "haiku" | "sonnet" | "opus" | "auto" },
   deps?: Parameters<typeof runReview>[1],
 ): Promise<AsyncIterable<ReviewChunk>> {
-  // Phase 5 cutover: fire the real agent loop
-  try {
-    const gen = runReview({ diff: input.diff, model: input.model }, deps);
-    const first = await gen.next();
-    return prepend(first, gen);
-  } catch (err) {
-    console.error("Failed to run agent loop, falling back to placeholder:", err);
-    return placeholderReview();
-  }
+  const gen = runReview({ diff: input.diff, model: input.model }, deps);
+  const first = await gen.next();
+  return prepend(first, gen);
 }
 
 async function* prepend(

@@ -1,5 +1,9 @@
 import { serverEnv } from "@/lib/env";
 
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+const RETRY_DELAYS_MS = [50, 100];
+const MAX_ATTEMPTS = RETRY_DELAYS_MS.length + 1;
+
 /**
  * Zero-dependency Upstash Redis client.
  *
@@ -31,23 +35,23 @@ export class RedisClient {
     if (!this.isEnabled()) return null;
 
     try {
-      const response = await fetch(`${this.url}/pipeline`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify([["GET", key]]),
-      });
-
-      if (!response.ok) return null;
+      const response = await this.fetchWithRetry(key, [["GET", key]]);
+      if (!response.ok) {
+        console.error("[redis] GET request failed:", { status: response.status, key });
+        return null;
+      }
       const data = (await response.json()) as Array<{ result?: string | null; error?: string }>;
       const item = data[0];
       if (item?.error) {
+        console.error("[redis] GET command error:", { error: item.error, key });
         return null;
       }
       return item?.result ?? null;
-    } catch {
+    } catch (err) {
+      console.error("[redis] GET threw:", {
+        error: err instanceof Error ? err.message : String(err),
+        key,
+      });
       return null;
     }
   }
@@ -59,23 +63,70 @@ export class RedisClient {
     if (!this.isEnabled()) return false;
 
     try {
-      const response = await fetch(`${this.url}/pipeline`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify([["SET", key, value, "EX", ttlSeconds]]),
-      });
-
-      if (!response.ok) return false;
+      const response = await this.fetchWithRetry(key, [["SET", key, value, "EX", ttlSeconds]]);
+      if (!response.ok) {
+        console.error("[redis] SET request failed:", { status: response.status, key });
+        return false;
+      }
       const data = (await response.json()) as Array<{ result?: string | null; error?: string }>;
       const item = data[0];
+      if (item?.error) {
+        console.error("[redis] SET command error:", { error: item.error, key });
+        return false;
+      }
       return item?.result === "OK";
-    } catch {
+    } catch (err) {
+      console.error("[redis] SET threw:", {
+        error: err instanceof Error ? err.message : String(err),
+        key,
+      });
       return false;
     }
   }
+
+  // ── internals ──────────────────────────────────────────────────────
+
+  private async fetchWithRetry(key: string, commands: unknown[]): Promise<Response> {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      let response: Response;
+      try {
+        response = await fetch(`${this.url}/pipeline`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(commands),
+        });
+      } catch (err) {
+        // Network-level failure — always retry
+        lastError = err;
+        if (attempt < MAX_ATTEMPTS) {
+          await sleep(RETRY_DELAYS_MS[attempt - 1] ?? 100);
+          continue;
+        }
+        throw err;
+      }
+
+      if (RETRYABLE_STATUS.has(response.status) && attempt < MAX_ATTEMPTS) {
+        console.error("[redis] retryable error, will retry:", {
+          status: response.status,
+          key,
+          attempt,
+        });
+        await sleep(RETRY_DELAYS_MS[attempt - 1] ?? 100);
+        continue;
+      }
+
+      return response;
+    }
+    throw lastError ?? new Error("[redis] all retry attempts exhausted");
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export const redis = new RedisClient();

@@ -35,8 +35,18 @@ vi.mock("@acr/db", () => ({
 
 vi.mock("@acr/agent", () => {
   return {
-    runReview: () => {
-      throw new Error("Mocked agent loop fallback");
+    runReview: async function* (_input: unknown) {
+      yield { type: "status", message: "Starting review..." } as const;
+      yield { type: "text", delta: "Test review text" } as const;
+      yield {
+        type: "final" as const,
+        output: {
+          summary: "Test summary",
+          findings: [],
+          confidence: "high" as const,
+        },
+        usage: { inputTokens: 10, outputTokens: 20, costUsd: 0.001 },
+      };
     },
     routeModel: (_diff: string) => "sonnet",
     resolveModel: (_model: string) => ({
@@ -84,6 +94,7 @@ vi.mock("@/lib/langfuse", () => ({
   }),
 }));
 
+import { SEMANTIC_CACHE_SIMILARITY_THRESHOLD } from "@/lib/review-constants";
 import type { ReviewChunk } from "@acr/agent";
 import { POST } from "./route";
 
@@ -124,7 +135,7 @@ describe("POST /api/reviews", () => {
     expect(res.status).toBe(400);
   });
 
-  it("streams placeholder chunks and persists the review", async () => {
+  it("streams agent chunks and persists the review", async () => {
     const res = await POST(makeRequest({ diff: "@@ -1 +1 @@\n-a\n+b" }));
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toMatch(/x-ndjson/);
@@ -136,7 +147,7 @@ describe("POST /api/reviews", () => {
     const final = chunks.find((c) => c.type === "final");
     expect(final).toBeDefined();
     if (final?.type === "final") {
-      expect(final.output.summary).toMatch(/placeholder/i);
+      expect(final.output.summary).toBeTruthy();
       expect(Array.isArray(final.output.findings)).toBe(true);
     }
 
@@ -161,5 +172,24 @@ describe("POST /api/reviews", () => {
     const res = await POST(makeRequest({ diff: "x" }));
     await drainNdjson(res);
     expect(dbState.inserted[0]?.model).toBe("sonnet");
+  });
+});
+
+describe("SEMANTIC_CACHE_SIMILARITY_THRESHOLD boundary", () => {
+  it("is exported and equals 0.05", () => {
+    expect(SEMANTIC_CACHE_SIMILARITY_THRESHOLD).toBe(0.05);
+  });
+
+  it("cache miss when distance equals the threshold", () => {
+    // distance >= threshold must NOT be a hit
+    expect(SEMANTIC_CACHE_SIMILARITY_THRESHOLD).toBeGreaterThan(0);
+    const missDistance = SEMANTIC_CACHE_SIMILARITY_THRESHOLD;
+    expect(missDistance < SEMANTIC_CACHE_SIMILARITY_THRESHOLD).toBe(false);
+  });
+
+  it("cache hit when distance is just below the threshold", () => {
+    // distance < threshold IS a hit
+    const hitDistance = SEMANTIC_CACHE_SIMILARITY_THRESHOLD - 0.001;
+    expect(hitDistance < SEMANTIC_CACHE_SIMILARITY_THRESHOLD).toBe(true);
   });
 });

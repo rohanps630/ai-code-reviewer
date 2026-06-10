@@ -109,13 +109,13 @@ export function createReadFileTool(
         return { found: false, path: input.path };
       }
 
+      const rawCount = Number(row.chunk_count);
       return {
         found: true,
         path: input.path,
         language: row.language,
         content: `<untrusted_file_content path="${input.path}">\n${sanitizeUntrustedText(row.content ?? "")}\n</untrusted_file_content>`,
-        chunk_count:
-          typeof row.chunk_count === "string" ? Number(row.chunk_count) : row.chunk_count,
+        chunk_count: Number.isFinite(rawCount) && rawCount >= 0 ? rawCount : 0,
       };
     },
   };

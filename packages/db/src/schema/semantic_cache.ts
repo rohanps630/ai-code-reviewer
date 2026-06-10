@@ -25,6 +25,8 @@ export const semanticCache = pgTable(
   },
   (table) => [
     index("semantic_cache_expires_at_idx").on(table.expires_at),
+    // Covers the model + expires_at filter before the HNSW vector scan
+    index("semantic_cache_model_expires_idx").on(table.model, table.expires_at),
     index("semantic_cache_embedding_hnsw_idx").using(
       "hnsw",
       table.embedding.op("vector_cosine_ops"),
