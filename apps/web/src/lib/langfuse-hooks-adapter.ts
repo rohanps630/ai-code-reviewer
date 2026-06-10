@@ -75,5 +75,19 @@ export function langfuseHooksAdapter(span: LangfuseSpanLike): AgentHooks {
         metadata: { durationMs: ctx.durationMs, iteration: ctx.iteration, runId: ctx.runId },
       });
     },
+    onRunError: (ctx) => {
+      // A model call that threw skips afterModelCall, leaving its generation
+      // open. Close it with the error so nothing dangles in Langfuse. (If the
+      // failure happened after a clean model call — cost cap, etc. — there's
+      // no open generation and this is a no-op.)
+      if (generation) {
+        generation.end({
+          level: "ERROR",
+          statusMessage: ctx.error instanceof Error ? ctx.error.message : String(ctx.error),
+          metadata: { runId: ctx.runId, cumulativeCostUsd: ctx.usage.costUsd },
+        });
+        generation = null;
+      }
+    },
   };
 }

@@ -44,6 +44,7 @@ export type {
   BeforeToolCallContext,
   AfterToolCallContext,
   SkipToolDecision,
+  RunErrorContext,
   StopToolConfig,
 } from "./agent.js";
 

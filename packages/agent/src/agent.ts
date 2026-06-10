@@ -71,6 +71,7 @@ export type {
   BeforeToolCallContext,
   AfterToolCallContext,
   SkipToolDecision,
+  RunErrorContext,
   StopToolConfig,
 } from "./agent-types.js";
 export {
@@ -247,6 +248,18 @@ export class Agent {
         errorName: err instanceof Error ? err.name : "Error",
         message: err instanceof Error ? err.message : String(err),
       });
+      // Best-effort cleanup hook (e.g. close a dangling observability
+      // generation). It must never mask the original failure.
+      if (this.hooks?.onRunError) {
+        try {
+          await this.hooks.onRunError({ runId, error: err, usage });
+        } catch (hookErr) {
+          console.error(
+            "[agent] onRunError hook threw (suppressed):",
+            hookErr instanceof Error ? hookErr.message : String(hookErr),
+          );
+        }
+      }
       throw err;
     }
   }

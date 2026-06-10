@@ -1,7 +1,7 @@
 import { Agent } from "@acr/agent";
 import type { AgentTool } from "@acr/agent";
 import type { ModelProvider, ModelRequest, ModelResponse } from "@acr/agent";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import {
@@ -126,25 +126,69 @@ describe("langfuseHooksAdapter", () => {
     expect(events[0]?.output).toEqual({ echoed: "hi" });
   });
 
-  it("does not throw when the run errors (hooks stay best-effort-safe)", async () => {
+  it("wires cleanly through a complete (successful) run", async () => {
     const { span, generations } = fakeSpan();
-    const endSpy = vi.fn();
-    span.generation = () => ({ update: () => undefined, end: endSpy }) as LangfuseGenerationLike;
     const agent = new Agent({
       model: scriptedProvider([
         {
-          text: "no tools",
+          text: "answer",
           toolCalls: [],
           usage: { inputTokens: 0, outputTokens: 0 },
           stopReason: "stop",
         },
       ]),
-      // No tools, no stop tool → a no-tool turn is a normal answer, so this
-      // simply verifies the adapter wires cleanly through a complete run.
       hooks: langfuseHooksAdapter(span),
     });
-    await expect(agent.run("go")).resolves.toBe("no tools");
-    expect(endSpy).toHaveBeenCalledOnce();
-    expect(generations).toHaveLength(0); // replaced span.generation above
+    await expect(agent.run("go")).resolves.toBe("answer");
+    expect(generations).toHaveLength(1);
+    expect(generations[0]?.ended).toHaveLength(1); // closed by afterModelCall
+  });
+
+  it("closes the dangling generation with ERROR when a model call throws", async () => {
+    const { span, generations } = fakeSpan();
+    const provider: ModelProvider = {
+      provider: "fake",
+      modelId: "fake-model",
+      generate: async () => {
+        throw new Error("upstream 503");
+      },
+    };
+    const agent = new Agent({ model: provider, hooks: langfuseHooksAdapter(span) });
+
+    await expect(agent.run("go")).rejects.toThrow(/upstream 503/);
+
+    // beforeModelCall opened one generation; afterModelCall never ran, so
+    // onRunError must have closed it (exactly once) with the error.
+    expect(generations).toHaveLength(1);
+    expect(generations[0]?.ended).toHaveLength(1);
+    expect(generations[0]?.ended[0]?.level).toBe("ERROR");
+    expect(generations[0]?.ended[0]?.statusMessage).toMatch(/upstream 503/);
+  });
+
+  it("does not double-close: a failure after a clean model call leaves no open generation", async () => {
+    const { span, generations } = fakeSpan();
+    // One clean model call (afterModelCall closes its generation), then the
+    // stop tool is never called → AgentNoStopToolError. onRunError must NOT
+    // re-close the already-closed generation.
+    const agent = new Agent({
+      model: scriptedProvider([
+        {
+          text: "I won't submit",
+          toolCalls: [],
+          usage: { inputTokens: 0, outputTokens: 0 },
+          stopReason: "stop",
+        },
+      ]),
+      stopTool: {
+        name: "submit",
+        description: "submit",
+        inputSchema: { type: "object", properties: {} },
+        validate: (r) => r,
+      },
+      hooks: langfuseHooksAdapter(span),
+    });
+    await expect(agent.run("go")).rejects.toThrow();
+    expect(generations).toHaveLength(1);
+    expect(generations[0]?.ended).toHaveLength(1); // closed once, by afterModelCall
   });
 });

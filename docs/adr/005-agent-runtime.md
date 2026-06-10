@@ -106,11 +106,16 @@ hooks: {
   afterModelCall?:  (ctx) => void | Promise<void>;
   beforeToolCall?:  (ctx) => void | { skip: string } | Promise<…>;  // skip ⇒ tool not run; string fed back as the result
   afterToolCall?:   (ctx) => void | Promise<void>;
+  onRunError?:      (ctx) => void | Promise<void>;  // best-effort cleanup on failure
 }
 ```
 
-Hook errors **fail the run** — hooks are guardrails, not best-effort logging.
-`beforeToolCall`'s `{ skip }` path is the human-approval / policy seam.
+The `before*`/`after*` hooks are guardrails: a throw from any of them **fails
+the run**. `beforeToolCall`'s `{ skip }` path is the human-approval / policy
+seam. `onRunError` is the exception — it fires once when a run terminates with
+an error and is **best-effort** (its own throw is swallowed, never masking the
+original failure). It exists so an observability adapter can close a
+generation/span that a model-call failure skipped past `afterModelCall`.
 
 ### 3. `runReview` rebuilt on `Agent` (loop.ts)
 

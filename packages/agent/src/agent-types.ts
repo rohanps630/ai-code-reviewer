@@ -223,11 +223,26 @@ export type AfterToolCallContext = {
  *  to the model verbatim as that tool's result. */
 export type SkipToolDecision = { readonly skip: string };
 
+export type RunErrorContext = {
+  readonly runId: string;
+  /** The error terminating the run (an `AgentError`, `ProviderError`, or a
+   *  hook's own throw). */
+  readonly error: unknown;
+  /** Usage accumulated up to the failure. */
+  readonly usage: AccumulatedUsage;
+};
+
 /**
- * Lifecycle hooks. Hook errors **fail the run** — they are guardrails, not
- * best-effort logging. `beforeToolCall` can veto a tool by returning
- * `{ skip }`: the tool is not executed and the string becomes its result.
- * That skip path is the human-approval / policy seam.
+ * Lifecycle hooks. The `before*`/`after*` hooks are **guardrails**: a throw
+ * from any of them fails the run. `beforeToolCall` can veto a tool by
+ * returning `{ skip }` (the tool is not executed and the string becomes its
+ * result) — the human-approval / policy seam.
+ *
+ * `onRunError` is the exception: it fires once when a run terminates with an
+ * error (a model call that threw, a cost-cap/timeout/abort, or a guardrail
+ * hook's throw) and is **best-effort** — its own throw is swallowed and never
+ * masks the original failure. Use it for cleanup, e.g. closing an
+ * observability span/generation that an `after*` hook never got to close.
  */
 export type AgentHooks = {
   readonly beforeModelCall?: (ctx: BeforeModelCallContext) => void | Promise<void>;
@@ -236,6 +251,7 @@ export type AgentHooks = {
     ctx: BeforeToolCallContext,
   ) => void | SkipToolDecision | Promise<void> | Promise<SkipToolDecision>;
   readonly afterToolCall?: (ctx: AfterToolCallContext) => void | Promise<void>;
+  readonly onRunError?: (ctx: RunErrorContext) => void | Promise<void>;
 };
 
 // ────────────────────────────────────────────────────────────────────

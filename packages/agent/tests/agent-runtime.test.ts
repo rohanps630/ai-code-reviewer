@@ -585,6 +585,43 @@ describe("hooks", () => {
     });
     await expect(collect(agent.stream("go"))).rejects.toThrow(/guardrail tripped/);
   });
+
+  it("onRunError fires once on failure with the error and partial usage", async () => {
+    const calls: Array<{ message: string; inputTokens: number }> = [];
+    const provider: ModelProvider = {
+      provider: "fake",
+      modelId: "fake-1",
+      generate: async () => {
+        throw new Error("provider exploded");
+      },
+    };
+    const agent = new Agent({
+      model: provider,
+      hooks: {
+        onRunError: (ctx) => {
+          calls.push({
+            message: ctx.error instanceof Error ? ctx.error.message : String(ctx.error),
+            inputTokens: ctx.usage.inputTokens,
+          });
+        },
+      },
+    });
+    await expect(collect(agent.stream("go"))).rejects.toThrow(/provider exploded/);
+    expect(calls).toEqual([{ message: "provider exploded", inputTokens: 0 }]);
+  });
+
+  it("a throwing onRunError is swallowed and never masks the original error", async () => {
+    const agent = new Agent({
+      model: scriptedProvider([{ text: "no tools" }]),
+      stopTool: STOP_TOOL, // no-tool turn → AgentNoStopToolError
+      hooks: {
+        onRunError: () => {
+          throw new Error("cleanup blew up");
+        },
+      },
+    });
+    await expect(collect(agent.stream("go"))).rejects.toThrow(/without calling the stop tool/i);
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────
