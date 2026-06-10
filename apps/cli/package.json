@@ -1,0 +1,28 @@
+{
+  "name": "@acr/cli",
+  "version": "0.0.1",
+  "private": true,
+  "description": "AI Code Reviewer CLI",
+  "type": "module",
+  "bin": {
+    "acr-review": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo",
+    "typecheck": "tsc --build",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@acr/agent": "workspace:*",
+    "@acr/github": "workspace:*",
+    "@acr/shared": "workspace:*",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

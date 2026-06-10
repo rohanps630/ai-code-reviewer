@@ -411,6 +411,32 @@ const tree = {
       },
     },
     {
+      label: "GitHub CI Review (acr-review)",
+      menu: {
+        title: "GitHub CI Review (acr-review)",
+        items: [
+          {
+            label: "Review a PR (Dry Run)",
+            action: async () => {
+              const url = await rl.question(`${cyan("?")} PR URL (https://github.com/.../pull/123): `);
+              if (!url.trim()) return;
+              await runCommand({ cmd: "pnpm", args: ["--filter", "@acr/cli", "exec", "acr-review", "--pr", url.trim(), "--dry-run"] });
+            },
+          },
+          {
+            label: "Review a PR (Live Post)",
+            action: async () => {
+              const url = await rl.question(`${cyan("?")} PR URL (https://github.com/.../pull/123): `);
+              if (!url.trim()) return;
+              if (await confirm("This will actually post a review to GitHub. Proceed?")) {
+                await runCommand({ cmd: "pnpm", args: ["--filter", "@acr/cli", "exec", "acr-review", "--pr", url.trim()] });
+              }
+            },
+          },
+        ],
+      },
+    },
+    {
       label: "About",
       action: async () => {
         const info = [
