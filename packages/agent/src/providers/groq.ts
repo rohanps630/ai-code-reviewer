@@ -43,18 +43,21 @@ export function groq(modelId: string, options: GroqProviderOptions = {}): ModelP
     modelId,
     async generate(request: ModelRequest): Promise<ModelResponse> {
       const c = await getClient();
-      const completion = await c.chat.completions.create({
-        model: modelId,
-        max_tokens: request.maxTokens > 0 ? request.maxTokens : (options.maxTokens ?? undefined),
-        messages: toOAIMessages(request),
-        tools:
-          request.tools.length > 0
-            ? request.tools.map((t) => ({
-                type: "function" as const,
-                function: { name: t.name, description: t.description, parameters: t.inputSchema },
-              }))
-            : undefined,
-      });
+      const completion = await c.chat.completions.create(
+        {
+          model: modelId,
+          max_tokens: request.maxTokens > 0 ? request.maxTokens : (options.maxTokens ?? undefined),
+          messages: toOAIMessages(request),
+          tools:
+            request.tools.length > 0
+              ? request.tools.map((t) => ({
+                  type: "function" as const,
+                  function: { name: t.name, description: t.description, parameters: t.inputSchema },
+                }))
+              : undefined,
+        },
+        request.signal ? { signal: request.signal } : undefined,
+      );
       return parseOAICompletion(PROVIDER, completion);
     },
   };

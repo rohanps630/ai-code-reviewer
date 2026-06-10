@@ -92,6 +92,7 @@ AgentError (abstract)  — carries { runId, usage } (partial usage at throw time
 ├── AgentCostCapError             { costUsd, capUsd, iteration }
 ├── AgentAbortedError             (external AbortSignal fired)
 ├── AgentTimeoutError             { budget: "model" | "tool" | "run" }
+├── AgentNoStopToolError          (stop tool configured, but the turn made no tool call)
 └── AgentStopToolValidationError  (stopTool.validate threw; original error in `cause`)
 ```
 
