@@ -39,8 +39,9 @@ def index_repo(
     own_db = db is None
     database = db or IndexerDB(cfg.database_url)
 
-    stats = {
-        "repo_url": repo_url,
+    # Counters are int-only so `+= 1` typechecks; repo_url is folded back in
+    # at each return so the returned dict shape is unchanged.
+    stats: dict[str, int] = {
         "files_scanned": 0,
         "files_chunked": 0,
         "chunks_total": 0,
@@ -54,7 +55,7 @@ def index_repo(
         if not repo_row:
             print(f"[indexer] Repo not found in DB: {repo_url}", file=sys.stderr)
             print("[indexer] Register it via POST /api/repos first.", file=sys.stderr)
-            return stats
+            return {"repo_url": repo_url, **stats}
 
         repo_id = str(repo_row["id"])
         database.update_repo_status(repo_id, status="indexing")
@@ -128,7 +129,7 @@ def index_repo(
         if own_db:
             database.close()
 
-    return stats
+    return {"repo_url": repo_url, **stats}
 
 
 # ── helpers ────────────────────────────────────────────────────────

@@ -56,15 +56,30 @@ class JudgeResult:
 
 
 class _MessagesAPI(Protocol):
-    """Minimal subset of Anthropic SDK `client.messages` the judge uses."""
+    """Minimal subset of Anthropic SDK `client.messages` the judge uses.
 
-    def create(self, **kwargs: Any) -> Any: ...
+    The signature mirrors the exact call in `judge_example` so the real SDK's
+    `messages` and the adapters' `_GroqMessages` both satisfy it structurally.
+    """
+
+    def create(
+        self,
+        *,
+        model: str,
+        max_tokens: int,
+        system: Any,
+        messages: Any,
+    ) -> Any: ...
 
 
 class AnthropicClient(Protocol):
     """Structural type covering the real Anthropic SDK client plus test fakes."""
 
-    messages: _MessagesAPI
+    # Read-only (property) so the real SDK's read-only `messages` and the
+    # adapters' `_GroqMessages` attribute both satisfy it structurally; a
+    # plain `messages: _MessagesAPI` is invariant and rejects both.
+    @property
+    def messages(self) -> _MessagesAPI: ...
 
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
