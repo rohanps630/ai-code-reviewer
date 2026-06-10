@@ -4,7 +4,7 @@ import {
   HybridRetriever,
   VoyageClient,
   defaultE2BFactory,
-  resolveModel,
+  resolveProviderForTier,
   routeModel,
   runReview,
   toVectorLiteral,
@@ -259,7 +259,7 @@ export async function POST(req: Request) {
       try {
         await db.update(reviews).set({ status: "streaming" }).where(eq(reviews.id, reviewId));
 
-        const baseProvider = resolveModel(selectedModel);
+        const baseProvider = await resolveProviderForTier(selectedModel, serverEnv);
 
         // Langfuse Traced Model Provider
         const tracedProvider = {
@@ -382,7 +382,7 @@ export async function POST(req: Request) {
           .catch(() => undefined);
         span?.end({ level: "ERROR", statusMessage: stringifyError(err) });
         await langfuse?.flushAsync();
-        emit({ type: "status", message: `Error: ${stringifyError(err)}` });
+        emit({ type: "error", message: stringifyError(err) });
       } finally {
         controller.close();
       }

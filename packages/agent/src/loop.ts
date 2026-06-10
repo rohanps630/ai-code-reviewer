@@ -66,66 +66,11 @@ import type { Finding, ReviewChunk, ReviewInput, ReviewOutput } from "./types.js
 // Configuration
 // ────────────────────────────────────────────────────────────────────
 
+import { PRICING_USD_PER_MTOK, resolveModelId } from "./models.js";
+
 const MAX_ITERATIONS = 10;
 const COST_CAP_USD = 0.5;
 const DEFAULT_MAX_TOKENS = 4096;
-
-type Tier = "haiku" | "sonnet" | "opus";
-
-/** Model IDs per provider + tier. Add a row when onboarding a new
- *  provider; defaultDeps() picks the right column from env. */
-const MODEL_TIERS: Record<string, Record<Tier, string>> = {
-  anthropic: {
-    haiku: "claude-haiku-4-5",
-    sonnet: "claude-sonnet-4-7",
-    opus: "claude-opus-4-7",
-  },
-  groq: {
-    haiku: "llama-3.1-8b-instant",
-    sonnet: "llama-3.3-70b-versatile",
-    opus: "llama-3.3-70b-versatile",
-  },
-  openai: {
-    haiku: "gpt-4o-mini",
-    sonnet: "gpt-4o",
-    opus: "gpt-4o",
-  },
-  google: {
-    haiku: "gemini-2.0-flash-lite",
-    sonnet: "gemini-2.5-flash",
-    opus: "gemini-2.5-pro",
-  },
-  ollama: {
-    haiku: "qwen3.5:latest",
-    sonnet: "gemma4:e4b",
-    opus: "deepseek-r1:14b",
-  },
-} as const;
-
-function resolveModelId(providerName: string, tier: string): string {
-  const tiers = MODEL_TIERS[providerName];
-  const isTier = (t: string): t is Tier => t === "haiku" || t === "sonnet" || t === "opus";
-  const safeTier: Tier = isTier(tier) ? tier : "sonnet";
-  return tiers?.[safeTier] ?? "sonnet";
-}
-
-/** Per-million-token pricing (USD). Used only for the cost cap —
- *  Langfuse handles real cost accounting downstream. */
-const PRICING_USD_PER_MTOK: Record<string, { input: number; output: number }> = {
-  "claude-haiku-4-5": { input: 1.0, output: 5.0 },
-  "claude-sonnet-4-7": { input: 3.0, output: 15.0 },
-  "claude-opus-4-7": { input: 15.0, output: 75.0 },
-  "llama-3.1-8b-instant": { input: 0.05, output: 0.08 },
-  "llama-3.3-70b-versatile": { input: 0.59, output: 0.79 },
-  "gpt-4o-mini": { input: 0.15, output: 0.6 },
-  "gpt-4o": { input: 2.5, output: 10.0 },
-  "gemini-2.5-flash": { input: 0.15, output: 0.6 },
-  "gemini-2.5-pro": { input: 1.25, output: 10.0 },
-  // Local inference — no marginal cost
-  "qwen3.5:latest": { input: 0, output: 0 },
-  "deepseek-r1:14b": { input: 0, output: 0 },
-  "gemma4:e4b": { input: 0, output: 0 },
-};
 
 // ────────────────────────────────────────────────────────────────────
 // Dep contracts
@@ -504,10 +449,28 @@ export function validateReviewOutput(raw: unknown): ReviewOutput {
 // Env-backed defaults
 // ────────────────────────────────────────────────────────────────────
 
-let cachedDeps: RunReviewDeps | null = null;
+const cachedDeps = new Map<string, RunReviewDeps>();
 
-async function defaultDeps(tier: string): Promise<RunReviewDeps> {
-  if (cachedDeps) return cachedDeps;
+// Shared heavy resources (retriever, executor, sandbox) — built once,
+// reused across all tiers so we only clone/embed/connect once per
+// process lifetime.
+let sharedRetriever: RetrieverLike | null = null;
+let sharedExecutor: SqlExecutorLike | null = null;
+let sharedSandboxFactory: RunTestsSandboxFactory | undefined;
+let sharedResourcesLoaded = false;
+
+async function ensureSharedResources(): Promise<{
+  retriever: RetrieverLike;
+  executor: SqlExecutorLike;
+  sandboxFactory: RunTestsSandboxFactory | undefined;
+}> {
+  if (sharedResourcesLoaded && sharedRetriever && sharedExecutor) {
+    return {
+      retriever: sharedRetriever,
+      executor: sharedExecutor,
+      sandboxFactory: sharedSandboxFactory,
+    };
+  }
 
   const [{ serverEnv }, { db }] = await Promise.all([
     import("@acr/shared/env"),
@@ -517,6 +480,48 @@ async function defaultDeps(tier: string): Promise<RunReviewDeps> {
       `Failed to load required modules in defaultDeps: ${err instanceof Error ? err.message : String(err)}`,
     );
   });
+
+  sharedExecutor = db as unknown as SqlExecutorLike;
+
+  if (serverEnv.VOYAGE_API_KEY) {
+    const { VoyageClient, CohereReranker } = await import("./retrieval/index.js");
+    const embedder = new VoyageClient({ apiKey: serverEnv.VOYAGE_API_KEY });
+    const reranker = serverEnv.COHERE_API_KEY
+      ? new CohereReranker({ apiKey: serverEnv.COHERE_API_KEY })
+      : undefined;
+    sharedRetriever = new HybridRetriever({
+      embedder,
+      executor: db as unknown as SqlExecutorLike,
+      reranker,
+    });
+  } else {
+    // No VOYAGE_API_KEY — use a no-op retriever (evals / local runs without a real index).
+    // All searches return empty results; RAG context will be absent from reviews.
+    console.warn(
+      "[agent] VOYAGE_API_KEY not set — retrieval is disabled. All search queries will return empty results.",
+    );
+    sharedRetriever = { search: async () => [] };
+  }
+
+  sharedSandboxFactory = serverEnv.E2B_API_KEY
+    ? await defaultE2BFactory(serverEnv.E2B_API_KEY)
+    : undefined;
+
+  sharedResourcesLoaded = true;
+  return {
+    retriever: sharedRetriever,
+    executor: sharedExecutor,
+    sandboxFactory: sharedSandboxFactory,
+  };
+}
+
+async function defaultDeps(tier: string): Promise<RunReviewDeps> {
+  const existing = cachedDeps.get(tier);
+  if (existing) return existing;
+
+  const shared = await ensureSharedResources();
+
+  const [{ serverEnv }] = await Promise.all([import("@acr/shared/env")]);
 
   const { anthropic, groq, openai, google, ollama } = await import("./providers/index.js").catch(
     (err: unknown) => {
@@ -543,41 +548,21 @@ async function defaultDeps(tier: string): Promise<RunReviewDeps> {
     });
   }
 
-  let retriever: RetrieverLike;
-  if (serverEnv.VOYAGE_API_KEY) {
-    const { VoyageClient, CohereReranker } = await import("./retrieval/index.js");
-    const embedder = new VoyageClient({ apiKey: serverEnv.VOYAGE_API_KEY });
-    const reranker = serverEnv.COHERE_API_KEY
-      ? new CohereReranker({ apiKey: serverEnv.COHERE_API_KEY })
-      : undefined;
-    retriever = new HybridRetriever({
-      embedder,
-      executor: db as unknown as SqlExecutorLike,
-      reranker,
-    });
-  } else {
-    // No VOYAGE_API_KEY — use a no-op retriever (evals / local runs without a real index).
-    // All searches return empty results; RAG context will be absent from reviews.
-    console.warn(
-      "[agent] VOYAGE_API_KEY not set — retrieval is disabled. All search queries will return empty results.",
-    );
-    retriever = { search: async () => [] };
-  }
-
-  const sandboxFactory: RunTestsSandboxFactory | undefined = serverEnv.E2B_API_KEY
-    ? await defaultE2BFactory(serverEnv.E2B_API_KEY)
-    : undefined;
-
-  cachedDeps = {
+  const deps: RunReviewDeps = {
     provider,
-    retriever,
-    executor: db as unknown as SqlExecutorLike,
-    sandboxFactory,
+    retriever: shared.retriever,
+    executor: shared.executor,
+    sandboxFactory: shared.sandboxFactory,
   };
-  return cachedDeps;
+  cachedDeps.set(tier, deps);
+  return deps;
 }
 
 /** Reset cached deps. Tests only. */
 export function _resetForTests(): void {
-  cachedDeps = null;
+  cachedDeps.clear();
+  sharedRetriever = null;
+  sharedExecutor = null;
+  sharedSandboxFactory = undefined;
+  sharedResourcesLoaded = false;
 }

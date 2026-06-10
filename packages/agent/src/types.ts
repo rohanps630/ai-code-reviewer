@@ -61,6 +61,7 @@ export type ReviewChunk =
   | { type: "tool_call"; name: string; input: unknown }
   | { type: "tool_result"; name: string; output: unknown }
   | { type: "text"; delta: string }
+  | { type: "error"; message: string }
   | {
       type: "final";
       output: ReviewOutput;

@@ -49,9 +49,9 @@ vi.mock("@acr/agent", () => {
       };
     },
     routeModel: (_diff: string) => "sonnet",
-    resolveModel: (_model: string) => ({
+    resolveProviderForTier: async (_tier: string, _env: unknown) => ({
       provider: "anthropic",
-      modelId: "claude-3-5-sonnet",
+      modelId: "claude-sonnet-4-7",
       generate: async () => ({
         text: "dummy",
         toolCalls: [],

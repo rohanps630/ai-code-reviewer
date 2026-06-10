@@ -9,7 +9,6 @@ import { notFound } from "next/navigation";
 import { DiffViewer } from "@/components/features/reviews/diff-viewer";
 import { FindingItem } from "@/components/features/reviews/finding-item";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -86,7 +85,7 @@ export default async function ReviewDetailPage({ params }: { params: Promise<{ i
             </div>
           </div>
         </div>
-        <RerunButton diff={review.diff} model={review.model} />
+        <RerunButton reviewId={review.id} />
       </div>
 
       {/* Diff */}
@@ -168,15 +167,14 @@ async function loadReview(id: string): Promise<Review | null> {
   return rows[0] ?? null;
 }
 
-function RerunButton({ diff, model }: { diff: string; model: string }) {
+function RerunButton({ reviewId }: { reviewId: string }) {
   return (
-    <form
-      action={`/reviews/new?diff=${encodeURIComponent(diff)}&model=${encodeURIComponent(model)}`}
+    <Link
+      href={`/reviews/new?from=${encodeURIComponent(reviewId)}`}
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-input bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
     >
-      <Button type="submit" variant="outline" size="sm" className="shrink-0">
-        <RotateCcw className="size-3.5" />
-        Re-run
-      </Button>
-    </form>
+      <RotateCcw className="size-3.5" />
+      Re-run
+    </Link>
   );
 }
