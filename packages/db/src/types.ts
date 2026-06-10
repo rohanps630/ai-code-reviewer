@@ -31,3 +31,8 @@ export type NewChunk = InferInsertModel<typeof chunks>;
 import type { semanticCache } from "./schema/semantic_cache.js";
 export type SemanticCache = InferSelectModel<typeof semanticCache>;
 export type NewSemanticCache = InferInsertModel<typeof semanticCache>;
+
+// Run/step replay (PR 2)
+import type { agentEvents } from "./schema/agent_events.js";
+export type AgentEventRow = InferSelectModel<typeof agentEvents>;
+export type NewAgentEventRow = InferInsertModel<typeof agentEvents>;

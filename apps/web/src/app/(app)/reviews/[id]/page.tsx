@@ -8,8 +8,10 @@ import { notFound } from "next/navigation";
 
 import { DiffViewer } from "@/components/features/reviews/diff-viewer";
 import { FindingItem } from "@/components/features/reviews/finding-item";
+import { ReplayTimeline } from "@/components/features/reviews/replay-timeline";
 import { ReviewPoller } from "@/components/features/reviews/review-poller";
 import { Badge } from "@/components/ui/badge";
+import { loadAgentEvents } from "@/lib/agent-events";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -40,7 +42,7 @@ function formatCost(cost: string | null): string | null {
 
 export default async function ReviewDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const review = await loadReview(id);
+  const [review, events] = await Promise.all([loadReview(id), loadAgentEvents(id)]);
   if (!review) notFound();
 
   const output = review.output as ReviewOutput | null;
@@ -97,6 +99,9 @@ export default async function ReviewDetailPage({ params }: { params: Promise<{ i
         <h2 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">Diff</h2>
         <DiffViewer diff={review.diff} />
       </div>
+
+      {/* Replay — persisted agent run/step stream */}
+      <ReplayTimeline events={events} />
 
       {/* Output */}
       <div className="flex flex-col gap-4 rounded-xl border border-border bg-card/60 p-6">

@@ -14,3 +14,6 @@ export { chunks } from "./chunks.js";
 
 // Phase 5 — production concerns
 export { semanticCache } from "./semantic_cache.js";
+
+// Run/step replay (PR 2)
+export { agentEvents } from "./agent_events.js";
