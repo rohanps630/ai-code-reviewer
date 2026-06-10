@@ -95,7 +95,11 @@ Add tracing, caching, model routing, prompt-injection defense.
 - Model router picks haiku/sonnet/opus by PR signal
 - Prompt-injection test suite passes
 
-## Phase 6 (optional) — Fine-tune a small model (~1 week)
+## Phase 6 (optional, archived) — Fine-tune a small model (~1 week)
+
+> **Status: archived.** Phases 1–5 are complete. Phase 6 is deferred indefinitely — revisit if production logs accumulate enough signal to make a training dataset worthwhile.
+
+
 
 Fine-tune a 7B model for a narrow sub-task.
 

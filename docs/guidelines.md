@@ -20,16 +20,14 @@ This is **not** a wrapper around `claude messages`. The interesting code is the 
 
 ## 2. Current phase
 
-**Phase 5 — Production concerns**: tracing, caching, model routing, prompt-injection defense.
+**Phases 1–5 complete.** The project is in a production-ready state.
 
-Update this section when phase changes. Phases:
-
-1. Foundations
-2. RAG done right
-3. Agents and tool use
-4. Evals
-5. Production concerns (current)
-6. (Optional) Fine-tuning
+1. Foundations ✅
+2. RAG done right ✅
+3. Agents and tool use ✅
+4. Evals ✅
+5. Production concerns ✅
+6. Fine-tuning — archived (see `docs/roadmap.md`)
 
 See `docs/roadmap.md` for full phase details.
 
