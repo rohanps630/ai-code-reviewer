@@ -28,6 +28,12 @@ export type {
   AccumulatedUsage,
   AgentStopReason,
   AgentTimeouts,
+  AgentHooks,
+  BeforeModelCallContext,
+  AfterModelCallContext,
+  BeforeToolCallContext,
+  AfterToolCallContext,
+  SkipToolDecision,
   StopToolConfig,
 } from "./agent.js";
 

@@ -36,6 +36,7 @@ import {
   AgentAbortedError,
   AgentCostCapError,
   type AgentEvent,
+  type AgentHooks,
   AgentMaxIterationsError,
   AgentNoStopToolError,
   type AgentRunOptions,
@@ -64,6 +65,12 @@ export type {
   AccumulatedUsage,
   AgentStopReason,
   AgentTimeouts,
+  AgentHooks,
+  BeforeModelCallContext,
+  AfterModelCallContext,
+  BeforeToolCallContext,
+  AfterToolCallContext,
+  SkipToolDecision,
   StopToolConfig,
 } from "./agent-types.js";
 export {
@@ -129,6 +136,9 @@ export interface AgentConfig {
   readonly maxConcurrentTools?: number;
   /** Structured-termination tool: appended to specs, never executed. */
   readonly stopTool?: StopToolConfig;
+  /** Lifecycle hooks (before/after model + tool calls). Hook errors fail
+   *  the run; `beforeToolCall` may veto a tool via `{ skip }`. */
+  readonly hooks?: AgentHooks;
 }
 
 export class Agent {
@@ -142,6 +152,7 @@ export class Agent {
   private readonly maxToolResultChars: number;
   private readonly maxConcurrentTools: number;
   private readonly stopTool?: StopToolConfig;
+  private readonly hooks?: AgentHooks;
   private readonly toolSpecs: readonly ToolSpec[];
   /** Built once at construction — immutable (ReadonlyMap), so it's safe to
    *  reuse across every run (and across concurrent runs). */
@@ -159,6 +170,7 @@ export class Agent {
     this.maxToolResultChars = config.maxToolResultChars ?? DEFAULT_MAX_TOOL_RESULT_CHARS;
     this.maxConcurrentTools = config.maxConcurrentTools ?? DEFAULT_MAX_CONCURRENT_TOOLS;
     this.stopTool = config.stopTool;
+    this.hooks = config.hooks;
 
     // Build the registry once. This also validates tool names + uniqueness
     // eagerly, so a bad tool array fails at construction, not mid-run.
@@ -267,6 +279,14 @@ export class Agent {
 
         yield this.stamp(runId, { type: "model_call_start", iteration });
 
+        // Hook errors fail the run — they propagate to stream()'s catch.
+        await this.hooks?.beforeModelCall?.({
+          runId,
+          iteration,
+          modelId: this.model.modelId,
+          messages,
+        });
+
         const response = await this.callModel(
           { system: this.systemPrompt, messages, tools: this.toolSpecs, maxTokens: this.maxTokens },
           external,
@@ -284,6 +304,8 @@ export class Agent {
           toolCallCount: response.toolCalls.length,
           usage: response.usage,
         });
+
+        await this.hooks?.afterModelCall?.({ runId, iteration, response, usage });
 
         messages.push({
           role: "assistant",
@@ -339,26 +361,25 @@ export class Agent {
 
         this.checkBoundary(external, runDeadline, runId, usage);
 
-        const results = await this.runToolBatch(toolCalls, runId, usage);
+        const results = await this.runToolBatch(toolCalls, runId, usage, iteration);
 
         for (const r of results) {
           yield this.stamp(runId, {
             type: "tool_result",
             name: r.name,
-            output: r.ok ? r.output : r.error,
-            isError: !r.ok,
+            output: r.eventOutput,
+            isError: r.isError,
             durationMs: r.durationMs,
           });
         }
 
         for (const r of results) {
-          const full = r.ok ? jsonStringify(r.output) : r.error;
           messages.push({
             role: "tool",
             toolCallId: r.id,
             toolName: r.name,
-            content: this.truncate(full),
-            isError: !r.ok,
+            content: this.truncate(r.messageContent),
+            isError: r.isError,
           });
         }
 
@@ -460,9 +481,10 @@ export class Agent {
     toolCalls: readonly ToolCall[],
     runId: string,
     usage: AccumulatedUsage,
+    iteration: number,
   ): Promise<ToolExecResult[]> {
     return mapWithConcurrency(toolCalls, this.maxConcurrentTools, (call) =>
-      this.runOneTool(call, runId, usage),
+      this.runOneTool(call, runId, usage, iteration),
     );
   }
 
@@ -470,8 +492,27 @@ export class Agent {
     call: ToolCall,
     runId: string,
     usage: AccumulatedUsage,
+    iteration: number,
   ): Promise<ToolExecResult> {
     const start = Date.now();
+
+    // beforeToolCall — the policy / human-approval seam. A `{ skip }` veto
+    // means the tool is NOT executed; the string is fed back as its result
+    // (and afterToolCall is skipped too).
+    if (this.hooks?.beforeToolCall) {
+      const decision = await this.hooks.beforeToolCall({ runId, iteration, toolCall: call });
+      if (decision && "skip" in decision) {
+        return {
+          id: call.id,
+          name: call.name,
+          isError: false,
+          eventOutput: decision.skip,
+          messageContent: decision.skip,
+          durationMs: Date.now() - start,
+        };
+      }
+    }
+
     const toolMs = this.timeouts.toolCallMs ?? DEFAULT_TOOL_TIMEOUT_MS;
     // Tools don't accept a signal, so a timeout can't cancel the work — it
     // bounds how long we WAIT. The timer is always cleared (no leak); the
@@ -487,9 +528,34 @@ export class Agent {
       () => new AgentTimeoutError("tool", toolMs, runId, usage),
     );
     const durationMs = Date.now() - start;
-    return result.ok
-      ? { id: call.id, name: call.name, ok: true, output: result.output, durationMs }
-      : { id: call.id, name: call.name, ok: false, error: result.error, durationMs };
+    const out: ToolExecResult = result.ok
+      ? {
+          id: call.id,
+          name: call.name,
+          isError: false,
+          eventOutput: result.output,
+          messageContent: jsonStringify(result.output),
+          durationMs,
+        }
+      : {
+          id: call.id,
+          name: call.name,
+          isError: true,
+          eventOutput: result.error,
+          messageContent: result.error,
+          durationMs,
+        };
+
+    await this.hooks?.afterToolCall?.({
+      runId,
+      iteration,
+      toolCall: call,
+      output: out.eventOutput,
+      isError: out.isError,
+      durationMs,
+    });
+
+    return out;
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -565,9 +631,17 @@ export class Agent {
 
 type RunDeadline = { signal: AbortSignal; limitMs: number; dispose: () => void };
 
-type ToolExecResult =
-  | { id: string; name: string; ok: true; output: unknown; durationMs: number }
-  | { id: string; name: string; ok: false; error: string; durationMs: number };
+/** One tool's outcome: `eventOutput` rides the `tool_result` event (full),
+ *  `messageContent` is what's fed to the model (pre-truncation). A skipped
+ *  tool (hook veto) and an errored tool both flow through this shape. */
+type ToolExecResult = {
+  id: string;
+  name: string;
+  isError: boolean;
+  eventOutput: unknown;
+  messageContent: string;
+  durationMs: number;
+};
 
 /** Cost of one step (USD). Cache-write = input × 1.25, cache-read = input ×
  *  0.1 — the formula `runReview` has always used. */
