@@ -1,7 +1,7 @@
 # ADR-004: Upgrade to Next.js 16
 
 - **Status:** Accepted
-- **Date:** 2025-06-05
+- **Date:** 2026-06-10
 - **Authors:** @rohanps630
 
 ## Context

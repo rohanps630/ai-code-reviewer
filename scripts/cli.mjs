@@ -350,7 +350,7 @@ const tree = {
       label: "Indexer (Python)",
       menu: {
         title: "Indexer",
-       items: [
+        items: [
           {
             label: "Sync dependencies (uv sync)",
             run: { cmd: "uv", args: ["sync"], cwd: INDEXER_DIR },

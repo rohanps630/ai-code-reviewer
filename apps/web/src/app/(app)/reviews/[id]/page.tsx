@@ -175,7 +175,7 @@ function RerunButton({ reviewId }: { reviewId: string }) {
   return (
     <Link
       href={`/reviews/new?from=${encodeURIComponent(reviewId)}`}
-      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-input bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-input bg-background px-3 py-1.5 font-medium text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
     >
       <RotateCcw className="size-3.5" />
       Re-run

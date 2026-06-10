@@ -21,7 +21,7 @@ export function ActivityTimeline({ events }: { events: ToolEvent[] }) {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between p-3 text-left text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+        className="flex w-full items-center justify-between p-3 text-left font-medium text-muted-foreground text-sm transition-colors hover:text-foreground"
       >
         <span className="flex items-center gap-2">
           <Wrench className="size-3.5" />
@@ -33,7 +33,7 @@ export function ActivityTimeline({ events }: { events: ToolEvent[] }) {
       </button>
 
       {open && (
-        <div className="border-t border-border/30 px-3 pb-3">
+        <div className="border-border/30 border-t px-3 pb-3">
           <ul className="flex flex-col gap-1.5 pt-2">
             {events.map((ev, i) => (
               <li key={`${i}-${ev.name}`} className="flex items-start gap-2 font-mono text-xs">

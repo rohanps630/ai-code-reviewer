@@ -51,9 +51,12 @@ export const MODEL_TIERS: Record<string, Record<Tier, string>> = {
 
 export function resolveModelId(providerName: string, tier: string): string {
   const tiers = MODEL_TIERS[providerName];
+  if (!tiers) {
+    throw new Error(`Unknown provider "${providerName}" — no model tier table`);
+  }
   const isTier = (t: string): t is Tier => t === "haiku" || t === "sonnet" || t === "opus";
   const safeTier: Tier = isTier(tier) ? tier : "sonnet";
-  return tiers?.[safeTier] ?? "sonnet";
+  return tiers[safeTier];
 }
 
 // ────────────────────────────────────────────────────────────────────

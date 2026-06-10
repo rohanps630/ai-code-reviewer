@@ -41,7 +41,6 @@ These are decided. Do not substitute without a written ADR in `docs/adr/`.
 - **Monorepo**: pnpm workspaces + Turborepo
 - **Web app**: Next.js 16 (App Router) + React 19 + TypeScript 5 (strict)
 - **Styling**: Tailwind CSS 4 + shadcn/ui
-- **Streaming**: Vercel AI SDK 5
 - **Validation**: Zod 3 at every external boundary
 
 ### Data

@@ -178,7 +178,7 @@ export default function SettingsPage() {
           <Settings className="size-4 text-primary" />
         </div>
         <h1 className="font-semibold text-xl tracking-tight">Settings</h1>
-        <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-400">
+        <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 font-medium text-[10px] text-amber-400">
           Preview — not yet wired up
         </span>
       </div>
