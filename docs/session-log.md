@@ -807,3 +807,33 @@ Honest framing of what this gives us:
 
 Gates: pytest 158/158 (unchanged — the dataset load test already
 covered the new examples), ruff clean, TS suite untouched.
+
+---
+
+## Phase 5 takeover — 2026-06-10
+
+Resuming Phase 5 of the AI Code Reviewer project. All Phase 5 production features were completed, but the final quality check and reviews schema test required adjustments to pass.
+
+**Phase 5 plan closeout:**
+1. Fix vitest schema test failures under `@acr/db`.
+2. Verify all quality gates pass (typecheck, lint, Vitest, Ruff, pytest).
+3. Update guidelines to Phase 5.
+
+### Task 5.1 — Schema mismatch test fix & quality check — done
+
+- **Fixed Schema Test**: Modified [reviews.test.ts](file:///Users/rohanpsuresh/Work/Personal/ai-code-reviewer/packages/db/src/schema/reviews.test.ts) to expect the Phase 5 cache columns (`cache_status` and `prompt_cache_tokens`) which were added to the schema in [reviews.ts](file:///Users/rohanpsuresh/Work/Personal/ai-code-reviewer/packages/db/src/schema/reviews.ts). This resolved the test failure under `@acr/db`.
+- **Pre-commit quality gates green**:
+  - Run `pnpm lint` (Biome check) — clean.
+  - Run `pnpm typecheck` (tsc compilation across packages) — clean.
+  - Run `pnpm test` (Vitest suite) — all 189 tests passed across `@acr/shared`, `@acr/db`, `@acr/agent`, and `@acr/web`.
+  - Python checks (`ruff check`, `ruff format --check`, and `pytest`) — all 158 tests passed.
+- **Current Phase updated**: Set Phase 5 as the current phase in [guidelines.md](file:///Users/rohanpsuresh/Work/Personal/ai-code-reviewer/docs/guidelines.md#L21-L34).
+
+## Phase 5 — complete
+
+Ship criteria met (per `docs/roadmap.md` Phase 5):
+- ✅ Every LLM call traced in Langfuse with cost.
+- ✅ Caching layers (Redis exact cache, PostgreSQL vector semantic cache) implemented.
+- ✅ Model router picks haiku/sonnet/opus by PR signal and token limits.
+- ✅ Prompt-injection test suite passes (XML delimiters and escaping in code readers).
+
