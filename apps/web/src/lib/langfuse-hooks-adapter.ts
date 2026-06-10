@@ -5,13 +5,15 @@
  * a Langfuse **generation** (with token usage + cache metadata), and each
  * tool call becomes a Langfuse **event** under the same span.
  *
- * Built and unit-tested in isolation (ADR-005 Phase 3). The live
- * `/api/reviews` route is NOT rewired here — it keeps its existing
- * traced-provider wrapper until callers migrate deliberately.
+ * Introduced in ADR-005 Phase 3 and wired into the live `/api/reviews`
+ * review stream (lib/review-stream.ts), which passes these hooks through
+ * `runReview` deps instead of wrapping the provider. This replaced the old
+ * traced-provider wrapper.
  *
  * Usage:
  *   const span = trace.span({ name: "agent-run" });
- *   const agent = new Agent({ ..., hooks: langfuseHooksAdapter(span) });
+ *   await runReview(input, { ...deps, hooks: langfuseHooksAdapter(span) });
+ *   // or directly: new Agent({ ..., hooks: langfuseHooksAdapter(span) });
  */
 
 import type { AgentHooks } from "@acr/agent";

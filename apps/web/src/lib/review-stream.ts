@@ -12,8 +12,8 @@ import { db } from "@acr/db/client";
 import type { Langfuse, LangfuseSpanClient } from "langfuse";
 
 import { serverEnv } from "@/lib/env";
+import { langfuseHooksAdapter } from "@/lib/langfuse-hooks-adapter";
 import { populateReviewCaches } from "@/lib/review-cache";
-import { makeTracedProvider } from "@/lib/traced-provider";
 import { stringifyError } from "@/lib/utils";
 
 /**
@@ -51,8 +51,7 @@ export function createReviewStream(opts: {
       try {
         await db.update(reviews).set({ status: "streaming" }).where(eq(reviews.id, reviewId));
 
-        const baseProvider = await resolveProviderForTier(selectedModel, serverEnv);
-        const tracedProvider = makeTracedProvider(baseProvider, span);
+        const provider = await resolveProviderForTier(selectedModel, serverEnv);
 
         const embedder = new VoyageClient({
           apiKey: serverEnv.VOYAGE_API_KEY ?? "",
@@ -73,11 +72,14 @@ export function createReviewStream(opts: {
           : undefined;
 
         const deps = {
-          provider: tracedProvider,
+          provider,
           retriever,
           // why: Drizzle db satisfies the SqlExecutorLike structural contract (execute: (q: unknown) => Promise<unknown>)
           executor: db as unknown as { execute: (query: unknown) => Promise<unknown> },
           sandboxFactory,
+          // Trace model + tool calls via Agent hooks instead of wrapping the
+          // provider. Omit when there's no span (Langfuse not configured).
+          hooks: span ? langfuseHooksAdapter(span) : undefined,
         };
 
         const source = await pickSource(input, deps);

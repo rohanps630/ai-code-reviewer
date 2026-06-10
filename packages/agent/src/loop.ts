@@ -38,7 +38,7 @@ import {
   AgentNoStopToolError,
   AgentStopToolValidationError,
 } from "./agent.js";
-import type { AgentTool } from "./agent.js";
+import type { AgentHooks, AgentTool } from "./agent.js";
 import { getModelPricing } from "./models.js";
 import { CURRENT_SYSTEM_PROMPT } from "./prompts/index.js";
 import type { ModelProvider } from "./providers/index.js";
@@ -87,6 +87,10 @@ export type RunReviewDeps = {
   /** Optional overrides — handy for evals + tests. */
   maxIterations?: number;
   costCapUsd?: number;
+  /** Optional observability/policy hooks, forwarded verbatim to the
+   *  underlying `Agent`. The web route passes `langfuseHooksAdapter(span)`
+   *  here so model/tool calls are traced without wrapping the provider. */
+  hooks?: AgentHooks;
 };
 
 // ────────────────────────────────────────────────────────────────────
@@ -224,6 +228,7 @@ async function* runReviewWithDeps(
       inputSchema: SUBMIT_REVIEW_INPUT_SCHEMA,
       validate: validateReviewOutput,
     },
+    hooks: deps.hooks,
   });
 
   yield {
