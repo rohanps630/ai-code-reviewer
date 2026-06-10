@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING
 from evals.bridge import BridgeError, SubprocessBridge
 from evals.judge import DEFAULT_JUDGE_MODEL as _ANTHROPIC_JUDGE_MODEL
 from evals.judge_groq import DEFAULT_GROQ_JUDGE_MODEL as _GROQ_JUDGE_MODEL
+from evals.judge_groq import DEFAULT_OLLAMA_JUDGE_MODEL as _OLLAMA_JUDGE_MODEL
 from evals.runner import BridgeResult, run_eval
 from evals.schema import EvalExample, load_examples_jsonl
 from evals.scorers.types import PredictedReview
@@ -159,10 +160,13 @@ def _default_anthropic_client() -> AnthropicClient:
         )
         return GroqJudgeAdapter(api_key=groq_key)
 
-    raise SystemExit(
-        "Neither ANTHROPIC_API_KEY nor GROQ_API_KEY is set.\n"
-        "Export one before running `evals.cli run`."
+    from evals.judge_groq import OllamaJudgeAdapter  # noqa: PLC0415
+
+    print(  # noqa: T201
+        "[judge] No API keys set — falling back to local Ollama judge.",
+        file=sys.stderr,
     )
+    return OllamaJudgeAdapter()
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -232,9 +236,12 @@ def run(
     judge_client = judge_client_factory()
 
     if args.judge_model is None:
-        args.judge_model = (
-            _ANTHROPIC_JUDGE_MODEL if os.environ.get("ANTHROPIC_API_KEY") else _GROQ_JUDGE_MODEL
-        )
+        if os.environ.get("ANTHROPIC_API_KEY"):
+            args.judge_model = _ANTHROPIC_JUDGE_MODEL
+        elif os.environ.get("GROQ_API_KEY"):
+            args.judge_model = _GROQ_JUDGE_MODEL
+        else:
+            args.judge_model = _OLLAMA_JUDGE_MODEL
 
     run_id = args.run_id or _generate_run_id(args.dataset)
     output_dir = Path(args.output_dir) if args.output_dir else Path(args.results_root) / run_id

@@ -101,6 +101,28 @@ class GroqJudgeAdapter:
         self.messages = _GroqMessages(oai_client)
 
 
+OLLAMA_BASE_URL = "http://localhost:11434/v1"
+DEFAULT_OLLAMA_JUDGE_MODEL = "qwen3.5:latest"
+
+
+class OllamaJudgeAdapter(GroqJudgeAdapter):
+    """Drop-in replacement for `AnthropicClient` backed by local Ollama.
+
+    Ollama exposes an OpenAI-compatible API at localhost:11434/v1.
+    No API key is required — "ollama" is used as a placeholder.
+    """
+
+    def __init__(self) -> None:
+        try:
+            from openai import OpenAI  # noqa: PLC0415
+        except ImportError as exc:
+            raise RuntimeError(
+                "openai package not installed — run `uv add openai` in apps/indexer"
+            ) from exc
+        oai_client = OpenAI(api_key="ollama", base_url=OLLAMA_BASE_URL)
+        self.messages = _GroqMessages(oai_client)
+
+
 def build_groq_judge_client(api_key: str | None = None) -> GroqJudgeAdapter:
     """Construct a GroqJudgeAdapter from an explicit key or GROQ_API_KEY env var."""
     import os  # noqa: PLC0415
