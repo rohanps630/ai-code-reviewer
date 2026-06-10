@@ -55,10 +55,11 @@ test-results/
 .coverage
 htmlcov/
 
-# Eval results (keep summaries, ignore raw)
+# Eval results — ignore auto-timestamped runs (e.g. v1-20260609T200800Z/)
+# Commit only named runs (e.g. evals/results/ollama-baseline/) explicitly
+evals/results/*-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9]*Z/
 evals/results/**/raw/
 evals/results/**/traces/
-!evals/results/**/summary.json
 
 # Database
 *.db
