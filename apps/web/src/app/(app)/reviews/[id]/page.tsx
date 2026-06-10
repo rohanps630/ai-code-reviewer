@@ -8,6 +8,7 @@ import { notFound } from "next/navigation";
 
 import { DiffViewer } from "@/components/features/reviews/diff-viewer";
 import { FindingItem } from "@/components/features/reviews/finding-item";
+import { ReviewPoller } from "@/components/features/reviews/review-poller";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -48,6 +49,9 @@ export default async function ReviewDetailPage({ params }: { params: Promise<{ i
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Auto-refresh for in-progress reviews */}
+      <ReviewPoller status={review.status} />
+
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">

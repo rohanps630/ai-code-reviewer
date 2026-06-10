@@ -33,4 +33,4 @@ export type {
 // Query helpers — re-exported so consumers use the same drizzle-orm
 // instance that @acr/db's schema definitions were built against, avoiding
 // dual-instance type incompatibility under pnpm peer-dep splitting.
-export { eq, and, or, desc, asc, sql, lt } from "drizzle-orm";
+export { eq, and, or, desc, asc, sql, lt, count } from "drizzle-orm";

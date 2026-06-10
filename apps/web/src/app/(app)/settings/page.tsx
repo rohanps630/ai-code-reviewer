@@ -173,11 +173,14 @@ export default function SettingsPage() {
   return (
     <div className="flex max-w-2xl flex-col gap-6">
       {/* Header */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
         <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10">
           <Settings className="size-4 text-primary" />
         </div>
         <h1 className="font-semibold text-xl tracking-tight">Settings</h1>
+        <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-400">
+          Preview — not yet wired up
+        </span>
       </div>
 
       {/* API Keys */}
@@ -194,7 +197,7 @@ export default function SettingsPage() {
           <ApiKeyField label="Cohere (reranker)" placeholder="…" envVar="COHERE_API_KEY" />
         </div>
         <div className="mt-4 flex justify-end">
-          <Button size="sm" variant="outline">
+          <Button size="sm" variant="outline" disabled>
             Save Keys
           </Button>
         </div>
@@ -258,7 +261,7 @@ export default function SettingsPage() {
           <p className="font-medium text-destructive/90 text-sm">Reset to defaults</p>
           <p className="text-muted-foreground text-xs">Clear all locally stored preferences.</p>
         </div>
-        <Button variant="destructive" size="sm">
+        <Button variant="destructive" size="sm" disabled>
           <RotateCcw className="size-3.5" />
           Reset
         </Button>

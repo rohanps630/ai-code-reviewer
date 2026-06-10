@@ -3,6 +3,7 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 
+import { ActivityTimeline } from "@/components/features/reviews/activity-timeline";
 import { FindingItem } from "@/components/features/reviews/finding-item";
 import { useReviewStream } from "@/components/features/reviews/use-review-stream";
 import { Badge } from "@/components/ui/badge";
@@ -266,6 +267,9 @@ export function NewReviewForm({
             ))}
           </div>
         ) : null}
+
+        {/* Tool activity */}
+        <ActivityTimeline events={stream.toolEvents} />
 
         {/* Streaming markdown text */}
         {stream.text.length > 0 ? (
