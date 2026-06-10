@@ -1,14 +1,16 @@
 /**
- * Model resolution and pricing tables.
+ * Model tier + pricing tables.
  *
- * Extracted from loop.ts so the web route can resolve tier labels
- * ("haiku" | "sonnet" | "opus") to concrete model providers without
- * going through the loop's internal `defaultDeps`. The loop itself
- * imports from here to avoid duplication.
+ * Extracted from loop.ts (ADR-005) so the web route, `runReview`, and the
+ * `Agent` runtime all read one source. `MODEL_TIERS` + `resolveModelId`
+ * map a tier label ("haiku" | "sonnet" | "opus") to a concrete model id
+ * per provider; `PRICING_USD_PER_MTOK` + `getModelPricing` drive the cost
+ * cap; `resolveProviderForTier()` replicates the provider-preference
+ * cascade from defaultDeps() — ANTHROPIC → GROQ → OPENAI → GOOGLE →
+ * Ollama — as a pure function of (tier, env keys).
  *
- * resolveProviderForTier() replicates the provider-preference cascade
- * from defaultDeps() — ANTHROPIC → GROQ → OPENAI → GOOGLE → Ollama —
- * but is a pure function of (tier, env keys) with no side effects.
+ * Pricing here is only for the in-loop spend cap. Langfuse owns real cost
+ * accounting downstream.
  */
 
 import type { ModelProvider } from "./providers/index.js";
@@ -49,12 +51,15 @@ export const MODEL_TIERS: Record<string, Record<Tier, string>> = {
   },
 } as const;
 
+export function isTier(t: string): t is Tier {
+  return t === "haiku" || t === "sonnet" || t === "opus";
+}
+
 export function resolveModelId(providerName: string, tier: string): string {
   const tiers = MODEL_TIERS[providerName];
   if (!tiers) {
     throw new Error(`Unknown provider "${providerName}" — no model tier table`);
   }
-  const isTier = (t: string): t is Tier => t === "haiku" || t === "sonnet" || t === "opus";
   const safeTier: Tier = isTier(tier) ? tier : "sonnet";
   return tiers[safeTier];
 }
@@ -81,6 +86,12 @@ export const PRICING_USD_PER_MTOK: Record<string, { input: number; output: numbe
   "gemma4:e4b": { input: 0, output: 0 },
 };
 
+/** Pricing for a concrete model id, or `undefined` when unknown (caller
+ *  disables cost tracking + the spend cap for that run). */
+export function getModelPricing(modelId: string): { input: number; output: number } | undefined {
+  return PRICING_USD_PER_MTOK[modelId];
+}
+
 // ────────────────────────────────────────────────────────────────────
 // Tier → ModelProvider (for route-level resolution)
 // ────────────────────────────────────────────────────────────────────
@@ -102,9 +113,9 @@ export type ProviderEnvKeys = {
  * preference cascade as `defaultDeps()` in loop.ts:
  *   ANTHROPIC_API_KEY → GROQ → OPENAI → GOOGLE → Ollama fallback.
  *
- * This is a synchronous function — provider constructors are cheap
- * (no network calls). The route can call this directly instead of
- * going through `resolveModel` (which expects model-ID strings).
+ * Provider constructors are cheap (no network calls). The route can call
+ * this directly instead of going through `resolveModel` (which expects
+ * model-ID strings).
  */
 export async function resolveProviderForTier(
   tier: string,
@@ -112,7 +123,6 @@ export async function resolveProviderForTier(
 ): Promise<ModelProvider> {
   const { anthropic, groq, openai, google, ollama } = await import("./providers/index.js");
 
-  const isTier = (t: string): t is Tier => t === "haiku" || t === "sonnet" || t === "opus";
   const safeTier = isTier(tier) ? tier : "sonnet";
 
   if (envKeys.ANTHROPIC_API_KEY) {

@@ -37,6 +37,7 @@ type GoogleGenerateParams = {
   config?: {
     systemInstruction?: string;
     maxOutputTokens?: number;
+    abortSignal?: AbortSignal;
     tools?: Array<{
       functionDeclarations: Array<{ name: string; description: string; parameters: unknown }>;
     }>;
@@ -89,6 +90,7 @@ export function google(modelId: string, options: GoogleProviderOptions = {}): Mo
         config: {
           systemInstruction: request.system,
           maxOutputTokens,
+          abortSignal: request.signal,
           tools:
             request.tools.length > 0
               ? [

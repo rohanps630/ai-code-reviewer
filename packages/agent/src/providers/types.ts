@@ -73,6 +73,10 @@ export type ModelRequest = {
   readonly messages: readonly ModelMessage[];
   readonly tools: readonly ToolSpec[];
   readonly maxTokens: number;
+  /** Optional cancellation signal. Adapters thread it to their SDK/fetch
+   *  call so an aborted run stops the in-flight request. Additive and
+   *  optional — providers that ignore it still work. */
+  readonly signal?: AbortSignal;
 };
 
 export type TokenUsage = {

@@ -52,7 +52,7 @@ export type OAICompletion = {
 export interface OAIClientLike {
   readonly chat: {
     readonly completions: {
-      create(params: OAICreateParams): Promise<OAICompletion>;
+      create(params: OAICreateParams, options?: { signal?: AbortSignal }): Promise<OAICompletion>;
     };
   };
 }

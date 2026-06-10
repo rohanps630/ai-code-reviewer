@@ -57,7 +57,10 @@ type AnthropicMessage = {
 
 export interface AnthropicClientLike {
   readonly messages: {
-    create(params: AnthropicCreateParams): Promise<AnthropicMessage>;
+    create(
+      params: AnthropicCreateParams,
+      options?: { signal?: AbortSignal },
+    ): Promise<AnthropicMessage>;
   };
 }
 
@@ -90,28 +93,31 @@ export function anthropic(modelId: string, options: AnthropicProviderOptions = {
     modelId,
     async generate(request: ModelRequest): Promise<ModelResponse> {
       const c = await getClient();
-      const message = await c.messages.create({
-        model: modelId,
-        max_tokens: request.maxTokens || maxTokensDefault,
-        system: request.system
-          ? [
-              {
-                type: "text",
-                text: request.system,
-                cache_control: { type: "ephemeral" },
-              },
-            ]
-          : undefined,
-        tools:
-          request.tools.length > 0
-            ? request.tools.map((t) => ({
-                name: t.name,
-                description: t.description,
-                input_schema: t.inputSchema,
-              }))
+      const message = await c.messages.create(
+        {
+          model: modelId,
+          max_tokens: request.maxTokens || maxTokensDefault,
+          system: request.system
+            ? [
+                {
+                  type: "text",
+                  text: request.system,
+                  cache_control: { type: "ephemeral" },
+                },
+              ]
             : undefined,
-        messages: toAnthropicMessages(request.messages),
-      });
+          tools:
+            request.tools.length > 0
+              ? request.tools.map((t) => ({
+                  name: t.name,
+                  description: t.description,
+                  input_schema: t.inputSchema,
+                }))
+              : undefined,
+          messages: toAnthropicMessages(request.messages),
+        },
+        request.signal ? { signal: request.signal } : undefined,
+      );
       return parseAnthropicMessage(message);
     },
   };

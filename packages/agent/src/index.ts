@@ -12,15 +12,40 @@ export type { Finding, ReviewChunk, ReviewInput, ReviewOutput } from "./types.js
 export {
   MODEL_TIERS,
   PRICING_USD_PER_MTOK,
+  getModelPricing,
   resolveModelId,
   resolveProviderForTier,
 } from "./models.js";
 export type { ProviderEnvKeys, Tier } from "./models.js";
 
-// Declarative, model-agnostic agent primitive (ADR-003). Separate from
-// the code-review `runReview` loop; reuses the tool framework.
-export { Agent, AgentMaxIterationsError } from "./agent.js";
-export type { AgentConfig, AgentTool } from "./agent.js";
+// Declarative, model-agnostic agent runtime (ADR-003, ADR-005). The
+// code-review `runReview` loop is a thin specialization of it.
+export {
+  Agent,
+  AgentError,
+  AgentMaxIterationsError,
+  AgentCostCapError,
+  AgentAbortedError,
+  AgentTimeoutError,
+  AgentNoStopToolError,
+  AgentStopToolValidationError,
+} from "./agent.js";
+export type {
+  AgentConfig,
+  AgentTool,
+  AgentEvent,
+  AgentRunOptions,
+  AccumulatedUsage,
+  AgentStopReason,
+  AgentTimeouts,
+  AgentHooks,
+  BeforeModelCallContext,
+  AfterModelCallContext,
+  BeforeToolCallContext,
+  AfterToolCallContext,
+  SkipToolDecision,
+  StopToolConfig,
+} from "./agent.js";
 
 // Provider seam — pass a provider object to `Agent`, or a model-id string.
 export { anthropic, openai, google, resolveModel, ProviderError } from "./providers/index.js";

@@ -1,64 +1,56 @@
 /**
- * runReview — the agent loop entry point.
+ * runReview — the code-review agent loop entry point.
  *
- * ⚠️  PROTECTED FILE — see AGENTS.md § 7.
+ * ⚠️  PROTECTED FILE — see docs/guidelines.md § 7.
  *
- * ReAct-style loop:
+ * As of ADR-005 this is a thin **specialization of the `Agent` runtime**
+ * (agent.ts), not a hand-rolled loop. `runReview` configures one `Agent`:
  *
- *   user(diff) ─▶ provider.generate({ tools: [search_code, read_file,
- *                                              find_references, submit_review] })
- *                       │
- *                       ▼
- *                 emit text chunk as ReviewChunk.text event
- *                       │
- *                       ▼ response.toolCalls
- *                       │
- *               ┌───────┴────────────┐
- *               │                    │
- *      submit_review called?    other tool calls?
- *               │                    │
- *               ▼                    ▼
- *          emit `final`        emit tool_call/tool_result
- *          stop loop           events; append tool_result
- *                              messages; loop again
+ *   - systemPrompt = CURRENT_SYSTEM_PROMPT (protected)
+ *   - tools        = the registry-built review tools (search_code, read_file,
+ *                    find_references, and run_tests when a sandbox is wired)
+ *   - stopTool     = submit_review, validated by `validateReviewOutput`
+ *   - pricing      = models.ts table, keyed by the provider's model id
+ *   - costCap / maxIterations = from deps (env-backed defaults otherwise)
  *
- * Termination:
- *   - submit_review tool called  → success
+ * It then maps the runtime's `AgentEvent`s onto the public `ReviewChunk`
+ * stream and translates the runtime's typed errors back to this loop's
+ * historical error messages. The public surface — `runReview`'s signature,
+ * the `ReviewChunk` sequence, and every error message/type — is unchanged.
+ *
+ * Termination (unchanged semantics):
+ *   - submit_review called      → `final` chunk, success
  *   - MAX_ITERATIONS reached     → throw
  *   - COST_CAP_USD exceeded      → throw
- *   - Model produced no tools    → throw (it should have at minimum
- *                                  called submit_review)
+ *   - model produced no tools    → throw (it must at least call submit_review)
  *
- * Provider:
- *   Any ModelProvider (Anthropic, OpenAI, Groq, etc.) can be injected
- *   via RunReviewDeps.provider. defaultDeps() resolves from env:
- *   ANTHROPIC_API_KEY → anthropic, GROQ_API_KEY → groq.
+ * Provider / deps: `provider`, `retriever`, and `executor` are injectable;
+ * `defaultDeps()` builds them from `@acr/shared/env` + `@acr/db/client`.
  *
- * Deps:
- *   `provider`, `retriever`, and `executor` are all injectable. The
- *   env-backed default builds them from `@acr/shared/env` +
- *   `@acr/db/client` + the hybrid retriever's `searchCode` factory.
- *
- * What the loop does NOT own:
- *   - Persistence — the route updates the reviews row from the
- *     ReviewChunk stream.
- *   - Langfuse tracing — the route wraps the stream in a span.
- *     The loop just emits semantic events.
+ * What the loop does NOT own: persistence (the route updates the reviews row
+ * from the chunk stream) and Langfuse tracing (the route wraps the stream).
  */
 
+import {
+  Agent,
+  AgentCostCapError,
+  AgentMaxIterationsError,
+  AgentNoStopToolError,
+  AgentStopToolValidationError,
+} from "./agent.js";
+import type { AgentTool } from "./agent.js";
+import { getModelPricing } from "./models.js";
 import { CURRENT_SYSTEM_PROMPT } from "./prompts/index.js";
-import type { ModelMessage, ModelProvider, ToolSpec } from "./providers/index.js";
+import type { ModelProvider } from "./providers/index.js";
 import { HybridRetriever, type SearchResult } from "./retrieval/index.js";
 import {
   type JsonSchemaObject,
   type RunTestsSandboxFactory,
-  buildToolRegistry,
   createFindReferencesTool,
   createReadFileTool,
   createRunTestsTool,
   createSearchCodeTool,
   defaultE2BFactory,
-  executeToolCall,
 } from "./tools/index.js";
 import type { Finding, ReviewChunk, ReviewInput, ReviewOutput } from "./types.js";
 
@@ -66,7 +58,7 @@ import type { Finding, ReviewChunk, ReviewInput, ReviewOutput } from "./types.js
 // Configuration
 // ────────────────────────────────────────────────────────────────────
 
-import { PRICING_USD_PER_MTOK, resolveModelId } from "./models.js";
+import { resolveModelId } from "./models.js";
 
 const MAX_ITERATIONS = 10;
 const COST_CAP_USD = 0.5;
@@ -98,8 +90,8 @@ export type RunReviewDeps = {
 };
 
 // ────────────────────────────────────────────────────────────────────
-// submit_review sentinel — tightly coupled to the loop's termination
-// logic, not a real executable tool.
+// submit_review sentinel — the Agent stop tool. Appended to the model's
+// tool specs, validated by validateReviewOutput, and never executed.
 // ────────────────────────────────────────────────────────────────────
 
 const SUBMIT_REVIEW_NAME = "submit_review";
@@ -133,14 +125,10 @@ const SUBMIT_REVIEW_INPUT_SCHEMA: JsonSchemaObject = {
   },
 };
 
-const SUBMIT_REVIEW_TOOL: ToolSpec = {
-  name: SUBMIT_REVIEW_NAME,
-  description:
-    "Submit the final structured review and stop. Call this exactly once " +
-    "at the end of your reasoning, after you've gathered enough context " +
-    "via the other tools. Do not produce text after calling this.",
-  inputSchema: SUBMIT_REVIEW_INPUT_SCHEMA,
-};
+const SUBMIT_REVIEW_DESCRIPTION =
+  "Submit the final structured review and stop. Call this exactly once " +
+  "at the end of your reasoning, after you've gathered enough context " +
+  "via the other tools. Do not produce text after calling this.";
 
 // ────────────────────────────────────────────────────────────────────
 // runReview — async-generator entry point
@@ -210,157 +198,104 @@ async function* runReviewWithDeps(
   const maxIter = deps.maxIterations ?? MAX_ITERATIONS;
   const costCap = deps.costCapUsd ?? COST_CAP_USD;
 
-  // Build per-call tool registry.
-  // why: Tool<SpecificIn, SpecificOut> is not assignable to Tool<unknown, unknown> due to
-  // function-parameter contravariance — the cast is safe because buildToolRegistry only
-  // reads name/description/inputSchema/inputValidator/outputValidator/execute at a widened
-  // level and never calls execute with an unconstrained unknown.
-  type WidenedTool = Parameters<typeof buildToolRegistry>[0][number];
-  const tools: WidenedTool[] = [
-    createSearchCodeTool(deps.retriever) as unknown as WidenedTool,
-    createReadFileTool(deps.executor) as unknown as WidenedTool,
-    createFindReferencesTool(deps.executor) as unknown as WidenedTool,
+  // The review tool set. Tool<SpecificIn, SpecificOut> is the covariant
+  // source of the public AgentTool shape; the Agent's registry only reads
+  // name/description/schema/validators/execute, so the cast is safe.
+  const tools: AgentTool[] = [
+    createSearchCodeTool(deps.retriever) as unknown as AgentTool,
+    createReadFileTool(deps.executor) as unknown as AgentTool,
+    createFindReferencesTool(deps.executor) as unknown as AgentTool,
   ];
   if (deps.sandboxFactory) {
-    tools.push(createRunTestsTool(deps.sandboxFactory) as unknown as WidenedTool);
+    tools.push(createRunTestsTool(deps.sandboxFactory) as unknown as AgentTool);
   }
-  const registry = buildToolRegistry(tools);
 
-  const toolSpecs: ToolSpec[] = [
-    ...[...registry.values()].map((t) => ({
-      name: t.name,
-      description: t.description,
-      inputSchema: t.inputSchema,
-    })),
-    SUBMIT_REVIEW_TOOL,
-  ];
-
-  const messages: ModelMessage[] = [{ role: "user", content: buildOpeningMessage(input) }];
-
-  let totalCostUsd = 0;
-  let totalInputTokens = 0;
-  let totalOutputTokens = 0;
-  let totalCacheReadTokens = 0;
-  let totalCacheCreationTokens = 0;
-  let iteration = 0;
+  const agent = new Agent({
+    model: deps.provider,
+    systemPrompt: CURRENT_SYSTEM_PROMPT,
+    tools,
+    maxIterations: maxIter,
+    maxTokens: DEFAULT_MAX_TOKENS,
+    pricing: getModelPricing(deps.provider.modelId),
+    costCapUsd: costCap,
+    stopTool: {
+      name: SUBMIT_REVIEW_NAME,
+      description: SUBMIT_REVIEW_DESCRIPTION,
+      inputSchema: SUBMIT_REVIEW_INPUT_SCHEMA,
+      validate: validateReviewOutput,
+    },
+  });
 
   yield {
     type: "status",
     message: `Agent loop starting (provider=${deps.provider.provider}, model=${deps.provider.modelId}, max_iter=${maxIter}, cap=$${costCap})`,
   };
 
-  while (iteration < maxIter) {
-    iteration++;
-    yield { type: "status", message: `Iteration ${iteration}/${maxIter}...` };
-
-    const response = await deps.provider.generate({
-      system: CURRENT_SYSTEM_PROMPT,
-      messages,
-      tools: toolSpecs,
-      maxTokens: DEFAULT_MAX_TOKENS,
-    });
-
-    if (response.text) {
-      yield { type: "text", delta: response.text };
+  try {
+    for await (const ev of agent.stream(buildOpeningMessage(input))) {
+      switch (ev.type) {
+        case "model_call_start":
+          yield { type: "status", message: `Iteration ${ev.iteration}/${maxIter}...` };
+          break;
+        case "model_response":
+          if (ev.text) yield { type: "text", delta: ev.text };
+          break;
+        case "tool_call":
+          yield { type: "tool_call", name: ev.name, input: ev.input };
+          break;
+        case "tool_result":
+          // Errors surface to the model as { error }, exactly as before.
+          yield {
+            type: "tool_result",
+            name: ev.name,
+            output: ev.isError ? { error: ev.output } : ev.output,
+          };
+          break;
+        case "final":
+          yield {
+            type: "final",
+            output: ev.stopToolInput as ReviewOutput,
+            usage: {
+              inputTokens: ev.usage.inputTokens,
+              outputTokens: ev.usage.outputTokens,
+              costUsd: ev.usage.costUsd,
+              cacheReadTokens: ev.usage.cacheReadTokens,
+              cacheCreationTokens: ev.usage.cacheCreationTokens,
+            },
+          };
+          break;
+        // run_start / run_error carry no review-stream meaning — the
+        // subsequent throw (if any) is translated below.
+      }
     }
-
-    totalInputTokens += response.usage.inputTokens;
-    totalOutputTokens += response.usage.outputTokens;
-    totalCacheReadTokens += response.usage.cacheReadTokens ?? 0;
-    totalCacheCreationTokens += response.usage.cacheCreationTokens ?? 0;
-
-    const pricing = PRICING_USD_PER_MTOK[deps.provider.modelId];
-    if (!pricing) {
-      console.warn(
-        `[agent] No pricing data for model "${deps.provider.modelId}" — cost tracking disabled for this run.`,
-      );
-    }
-    if (pricing) {
-      const cacheRead = response.usage.cacheReadTokens ?? 0;
-      const cacheWrite = response.usage.cacheCreationTokens ?? 0;
-      const baseInput = response.usage.inputTokens - cacheRead - cacheWrite;
-
-      const writeRate = pricing.input * 1.25;
-      const readRate = pricing.input * 0.1;
-
-      const stepCost =
-        (baseInput / 1_000_000) * pricing.input +
-        (cacheRead / 1_000_000) * readRate +
-        (cacheWrite / 1_000_000) * writeRate +
-        (response.usage.outputTokens / 1_000_000) * pricing.output;
-
-      totalCostUsd += stepCost;
-    }
-
-    messages.push({
-      role: "assistant",
-      content: response.text,
-      toolCalls: [...response.toolCalls],
-    });
-
-    // Did the model submit a review?
-    const submitCall = response.toolCalls.find((tc) => tc.name === SUBMIT_REVIEW_NAME);
-    if (submitCall) {
-      const output = validateReviewOutput(submitCall.input);
-      yield {
-        type: "final",
-        output,
-        usage: {
-          inputTokens: totalInputTokens,
-          outputTokens: totalOutputTokens,
-          costUsd: totalCostUsd,
-          cacheReadTokens: totalCacheReadTokens,
-          cacheCreationTokens: totalCacheCreationTokens,
-        },
-      };
-      return;
-    }
-
-    const toolUses = response.toolCalls.filter((tc) => tc.name !== SUBMIT_REVIEW_NAME);
-
-    if (toolUses.length === 0) {
-      throw new Error("Model ended turn without calling submit_review or any other tool");
-    }
-
-    for (const call of toolUses) {
-      yield { type: "tool_call", name: call.name, input: call.input };
-    }
-
-    const results = await Promise.all(
-      toolUses.map((call) =>
-        executeToolCall(registry, { id: call.id, name: call.name, input: call.input }),
-      ),
-    );
-
-    for (const result of results) {
-      yield {
-        type: "tool_result",
-        name: result.name,
-        output: result.ok ? result.output : { error: result.error },
-      };
-    }
-
-    // Tool results are individual messages in the neutral format.
-    for (const result of results) {
-      messages.push({
-        role: "tool",
-        toolCallId: result.id,
-        toolName: result.name,
-        content: result.ok ? JSON.stringify(result.output) : result.error,
-        isError: !result.ok,
-      });
-    }
-
-    if (totalCostUsd >= costCap) {
-      throw new Error(
-        `Cost cap exceeded: $${totalCostUsd.toFixed(4)} >= $${costCap.toFixed(2)} after iteration ${iteration}`,
-      );
-    }
+  } catch (err) {
+    throw translateRuntimeError(err);
   }
+}
 
-  throw new Error(
-    `MAX_ITERATIONS reached (${maxIter}) without submit_review. Cost: $${totalCostUsd.toFixed(4)}.`,
-  );
+/**
+ * Map the `Agent` runtime's typed errors back to this loop's historical
+ * error messages/types, so callers and tests see no behavioral change.
+ */
+function translateRuntimeError(err: unknown): unknown {
+  if (err instanceof AgentCostCapError) {
+    return new Error(
+      `Cost cap exceeded: $${err.costUsd.toFixed(4)} >= $${err.capUsd.toFixed(2)} after iteration ${err.iteration}`,
+    );
+  }
+  if (err instanceof AgentMaxIterationsError) {
+    return new Error(
+      `MAX_ITERATIONS reached (${err.iterations}) without submit_review. Cost: $${err.usage.costUsd.toFixed(4)}.`,
+    );
+  }
+  if (err instanceof AgentNoStopToolError) {
+    return new Error("Model ended turn without calling submit_review or any other tool");
+  }
+  if (err instanceof AgentStopToolValidationError) {
+    // Preserve the exact validateReviewOutput message.
+    return err.cause instanceof Error ? err.cause : new Error(String(err.cause ?? err.message));
+  }
+  return err;
 }
 
 // ────────────────────────────────────────────────────────────────────
