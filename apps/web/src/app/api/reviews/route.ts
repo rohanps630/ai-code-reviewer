@@ -1,16 +1,32 @@
-import { runReview } from "@acr/agent";
-import type { ReviewChunk, ReviewOutput } from "@acr/agent";
-import { eq, reviews } from "@acr/db";
+import crypto from "node:crypto";
+import {
+  CohereReranker,
+  HybridRetriever,
+  VoyageClient,
+  defaultE2BFactory,
+  resolveModel,
+  routeModel,
+  runReview,
+  toVectorLiteral,
+} from "@acr/agent";
+import type { ModelRequest, ReviewChunk, ReviewOutput } from "@acr/agent";
+import { eq, reviews, semanticCache, sql } from "@acr/db";
 import { db } from "@acr/db/client";
 import { z } from "zod";
 
+import { serverEnv } from "@/lib/env";
 import { getLangfuse } from "@/lib/langfuse";
+import { redis } from "@/lib/redis";
 import { placeholderReview } from "./placeholder";
 
 const BodySchema = z.object({
   diff: z.string().min(1, "diff must not be empty"),
-  model: z.enum(["haiku", "sonnet", "opus"]).default("sonnet"),
+  model: z.enum(["haiku", "sonnet", "opus", "auto"]).default("auto"),
 });
+
+function sha256(text: string): string {
+  return crypto.createHash("sha256").update(text).digest("hex");
+}
 
 export async function POST(req: Request) {
   const raw = await req.json().catch(() => null);
@@ -22,11 +38,156 @@ export async function POST(req: Request) {
     );
   }
 
-  const { diff, model } = parsed.data;
+  const { diff, model: requestModel } = parsed.data;
 
+  // 1. Model Routing (Phase 5)
+  const selectedModel = requestModel === "auto" ? routeModel(diff) : requestModel;
+
+  // Hash diff + model for exact matching
+  const diffHash = sha256(diff);
+  const redisKey = `exact_cache:${selectedModel}:${diffHash}`;
+
+  const langfuse = getLangfuse();
+  const trace = langfuse?.trace({
+    name: "review",
+    metadata: { model: selectedModel },
+  });
+
+  // Check exact-match cache (Redis)
+  const cachedExact = await redis.get(redisKey);
+  if (cachedExact) {
+    try {
+      const cachedOutput = JSON.parse(cachedExact) as ReviewOutput;
+
+      const [inserted] = await db
+        .insert(reviews)
+        .values({
+          diff,
+          model: selectedModel,
+          status: "completed",
+          output: cachedOutput,
+          cache_status: "exact",
+          input_tokens: 0,
+          output_tokens: 0,
+          cost_usd: "0",
+        })
+        .returning({ id: reviews.id });
+
+      const reviewId = inserted?.id || crypto.randomUUID();
+      trace?.update({ metadata: { reviewId, cacheStatus: "exact" } });
+
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          const encoder = new TextEncoder();
+          const emit = (chunk: ReviewChunk) => {
+            controller.enqueue(encoder.encode(`${JSON.stringify(chunk)}\n`));
+          };
+          emit({ type: "status", message: "Exact cache hit! Retrieving cached review..." });
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          emit({ type: "final", output: cachedOutput });
+          controller.close();
+        },
+      });
+
+      await langfuse?.flushAsync();
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "application/x-ndjson; charset=utf-8",
+          "Cache-Control": "no-store",
+          "X-Review-Id": reviewId,
+        },
+      });
+    } catch (err) {
+      console.error("Failed parsing or saving exact cache hit:", err);
+    }
+  }
+
+  // 2. Check semantic cache (Postgres pgvector)
+  let queryEmbedding: number[] | null = null;
+  let cachedSemanticOutput: ReviewOutput | null = null;
+
+  try {
+    if (serverEnv.VOYAGE_API_KEY) {
+      const voyageClient = new VoyageClient({ apiKey: serverEnv.VOYAGE_API_KEY });
+      queryEmbedding = await voyageClient.embedQuery(diff);
+      const vectorLiteral = toVectorLiteral(queryEmbedding);
+
+      // Search semantic_cache table for nearest neighbor (distance < 0.05 corresponds to similarity > 0.95)
+      const rows = (await db.execute(sql`
+        select
+          response,
+          embedding <=> ${vectorLiteral}::vector as distance
+        from semantic_cache
+        where expires_at > now()
+          and model = ${selectedModel}
+        order by embedding <=> ${vectorLiteral}::vector
+        limit 1
+      `)) as unknown as Array<{ response: string; distance: number }>;
+
+      const hit = rows[0];
+      if (hit && Number(hit.distance) < 0.05) {
+        cachedSemanticOutput = JSON.parse(hit.response) as ReviewOutput;
+      }
+    }
+  } catch (err) {
+    console.error("Semantic cache lookup failed:", err);
+  }
+
+  if (cachedSemanticOutput) {
+    const semanticOutput = cachedSemanticOutput;
+    try {
+      const [inserted] = await db
+        .insert(reviews)
+        .values({
+          diff,
+          model: selectedModel,
+          status: "completed",
+          output: semanticOutput,
+          cache_status: "semantic",
+          input_tokens: 0,
+          output_tokens: 0,
+          cost_usd: "0",
+        })
+        .returning({ id: reviews.id });
+
+      const reviewId = inserted?.id || crypto.randomUUID();
+      trace?.update({ metadata: { reviewId, cacheStatus: "semantic" } });
+
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          const encoder = new TextEncoder();
+          const emit = (chunk: ReviewChunk) => {
+            controller.enqueue(encoder.encode(`${JSON.stringify(chunk)}\n`));
+          };
+          emit({
+            type: "status",
+            message: "Semantic cache hit (similarity > 95%)! Retrieving cached review...",
+          });
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          emit({ type: "final", output: semanticOutput });
+          controller.close();
+        },
+      });
+
+      await langfuse?.flushAsync();
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "application/x-ndjson; charset=utf-8",
+          "Cache-Control": "no-store",
+          "X-Review-Id": reviewId,
+        },
+      });
+    } catch (err) {
+      console.error("Failed saving semantic cache hit:", err);
+    }
+  }
+
+  // 3. Cache Miss: Run real agent loop
   const [inserted] = await db
     .insert(reviews)
-    .values({ diff, model, status: "pending" })
+    .values({ diff, model: selectedModel, status: "pending" })
     .returning({ id: reviews.id });
 
   if (!inserted) {
@@ -34,12 +195,8 @@ export async function POST(req: Request) {
   }
   const reviewId = inserted.id;
 
-  const langfuse = getLangfuse();
-  const trace = langfuse?.trace({
-    name: "review",
-    metadata: { reviewId, model },
-  });
-  const span = trace?.span({ name: "placeholder-stream" });
+  trace?.update({ metadata: { reviewId, cacheStatus: "miss" } });
+  const span = trace?.span({ name: "agent-run" });
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -49,12 +206,89 @@ export async function POST(req: Request) {
       };
 
       let final: ReviewOutput | null = null;
+      let usage: {
+        inputTokens: number;
+        outputTokens: number;
+        costUsd: number;
+        cacheReadTokens?: number;
+        cacheCreationTokens?: number;
+      } | null = null;
+
       try {
         await db.update(reviews).set({ status: "streaming" }).where(eq(reviews.id, reviewId));
 
-        const source = await pickSource(parsed.data);
+        const baseProvider = resolveModel(selectedModel);
+
+        // Langfuse Traced Model Provider
+        const tracedProvider = {
+          provider: baseProvider.provider,
+          modelId: baseProvider.modelId,
+          async generate(request: ModelRequest) {
+            const generation = span?.generation({
+              name: "llm-call",
+              model: baseProvider.modelId,
+              input: request.messages,
+              modelParameters: { maxTokens: request.maxTokens },
+            });
+
+            try {
+              const res = await baseProvider.generate(request);
+              generation?.update({
+                output: res.text || res.toolCalls,
+                usage: {
+                  input: res.usage.inputTokens,
+                  output: res.usage.outputTokens,
+                },
+                metadata: {
+                  cacheReadTokens: res.usage.cacheReadTokens,
+                  cacheCreationTokens: res.usage.cacheCreationTokens,
+                },
+              });
+              return res;
+            } catch (err) {
+              generation?.update({
+                metadata: { error: stringifyError(err) },
+              });
+              throw err;
+            } finally {
+              generation?.end();
+            }
+          },
+        };
+
+        const embedder = new VoyageClient({ apiKey: serverEnv.VOYAGE_API_KEY ?? "" });
+        const reranker = serverEnv.COHERE_API_KEY
+          ? new CohereReranker({ apiKey: serverEnv.COHERE_API_KEY })
+          : undefined;
+        const retriever = new HybridRetriever({
+          embedder,
+          // why: Drizzle db conforms structurally to HybridRetriever SqlExecutor contract
+          // biome-ignore lint/suspicious/noExplicitAny: Drizzle db conforms structurally to HybridRetriever SqlExecutor contract
+          executor: db as any,
+          reranker,
+        });
+
+        const sandboxFactory = serverEnv.E2B_API_KEY
+          ? await defaultE2BFactory(serverEnv.E2B_API_KEY)
+          : undefined;
+
+        const deps = {
+          provider: tracedProvider,
+          retriever,
+          // why: Drizzle db conforms structurally to loop SqlExecutor contract
+          // biome-ignore lint/suspicious/noExplicitAny: Drizzle db conforms structurally to loop SqlExecutor contract
+          executor: db as any,
+          sandboxFactory,
+        };
+
+        const source = await pickSource(parsed.data, deps);
         for await (const chunk of source) {
-          if (chunk.type === "final") final = chunk.output;
+          if (chunk.type === "final") {
+            final = chunk.output;
+            if (chunk.type === "final" && chunk.usage) {
+              usage = chunk.usage;
+            }
+          }
           emit(chunk);
         }
 
@@ -63,13 +297,37 @@ export async function POST(req: Request) {
           .set({
             status: "completed",
             output: final,
-            input_tokens: 0,
-            output_tokens: 0,
-            cost_usd: "0",
+            input_tokens: usage ? usage.inputTokens : 0,
+            output_tokens: usage ? usage.outputTokens : 0,
+            cost_usd: usage ? usage.costUsd.toFixed(6) : "0",
+            cache_status: "miss",
+            prompt_cache_tokens: usage ? (usage.cacheReadTokens ?? 0) : 0,
           })
           .where(eq(reviews.id, reviewId));
 
         span?.end();
+
+        // 4. Cache populate on success
+        if (final) {
+          const responseStr = JSON.stringify(final);
+          await redis.set(redisKey, responseStr, 7 * 24 * 60 * 60).catch(() => false);
+
+          if (queryEmbedding) {
+            try {
+              const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+              await db.insert(semanticCache).values({
+                diff,
+                model: selectedModel,
+                response: responseStr,
+                embedding: queryEmbedding,
+                expires_at: expiresAt,
+              });
+            } catch (err) {
+              console.error("Failed to populate semantic cache:", err);
+            }
+          }
+        }
+
         await langfuse?.flushAsync();
       } catch (err) {
         await db
@@ -95,22 +353,17 @@ export async function POST(req: Request) {
   });
 }
 
-async function pickSource(input: {
-  diff: string;
-  model: "haiku" | "sonnet" | "opus";
-}): Promise<AsyncIterable<ReviewChunk>> {
-  // Phase 3.4 landed the real agent loop but we don't fire it from the
-  // route yet — the dark-code pattern from Phase 2.7. To cut over,
-  // drop this try/catch and return `runReview({...})` directly.
-  // Until then: try runReview, fall back to the placeholder on any
-  // error (missing API key, network, etc.) so dev requests don't 500.
+async function pickSource(
+  input: { diff: string; model: "haiku" | "sonnet" | "opus" | "auto" },
+  deps?: Parameters<typeof runReview>[1],
+): Promise<AsyncIterable<ReviewChunk>> {
+  // Phase 5 cutover: fire the real agent loop
   try {
-    const gen = runReview({ diff: input.diff, model: input.model });
-    // Force the generator to start so any setup error (missing env,
-    // failed dep wiring) surfaces here rather than mid-stream.
+    const gen = runReview({ diff: input.diff, model: input.model }, deps);
     const first = await gen.next();
     return prepend(first, gen);
-  } catch {
+  } catch (err) {
+    console.error("Failed to run agent loop, falling back to placeholder:", err);
     return placeholderReview();
   }
 }

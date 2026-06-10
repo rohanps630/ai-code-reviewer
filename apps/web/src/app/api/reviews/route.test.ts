@@ -33,6 +33,31 @@ vi.mock("@acr/db", () => ({
   eq: (_col: unknown, id: string) => ({ id }),
 }));
 
+vi.mock("@acr/agent", () => {
+  return {
+    runReview: () => {
+      throw new Error("Mocked agent loop fallback");
+    },
+    routeModel: (_diff: string) => "sonnet",
+    resolveModel: (_model: string) => ({
+      provider: "anthropic",
+      modelId: "claude-3-5-sonnet",
+      generate: async () => ({
+        text: "dummy",
+        toolCalls: [],
+        usage: { inputTokens: 0, outputTokens: 0 },
+      }),
+    }),
+    VoyageClient: class {
+      embedQuery = async () => [0.1, 0.2];
+    },
+    HybridRetriever: class {},
+    CohereReranker: class {},
+    defaultE2BFactory: async () => ({}),
+    toVectorLiteral: (arr: number[]) => `[${arr.join(",")}]`,
+  };
+});
+
 const langfuseSpans = vi.hoisted(() => ({
   traceCalls: [] as Array<{ name: string }>,
   flushCalls: 0,
@@ -43,7 +68,14 @@ vi.mock("@/lib/langfuse", () => ({
     trace: (args: { name: string }) => {
       langfuseSpans.traceCalls.push(args);
       return {
-        span: (_a: unknown) => ({ end: (_p?: unknown) => undefined }),
+        update: (_u: unknown) => undefined,
+        span: (_a: unknown) => ({
+          end: (_p?: unknown) => undefined,
+          generation: (_g: unknown) => ({
+            update: (_gu: unknown) => undefined,
+            end: () => undefined,
+          }),
+        }),
       };
     },
     flushAsync: async () => {

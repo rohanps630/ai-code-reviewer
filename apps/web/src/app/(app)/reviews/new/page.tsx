@@ -11,8 +11,8 @@ import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
-function isModel(v: string | null): v is "haiku" | "sonnet" | "opus" {
-  return v === "haiku" || v === "sonnet" || v === "opus";
+function isModel(v: string | null): v is "haiku" | "sonnet" | "opus" | "auto" {
+  return v === "haiku" || v === "sonnet" || v === "opus" || v === "auto";
 }
 
 export default function NewReviewPage() {
@@ -27,8 +27,8 @@ function NewReviewForm() {
   const params = useSearchParams();
   const initialModel = params.get("model");
   const [diff, setDiff] = useState(params.get("diff") ?? "");
-  const [model, setModel] = useState<"haiku" | "sonnet" | "opus">(
-    isModel(initialModel) ? initialModel : "sonnet",
+  const [model, setModel] = useState<"haiku" | "sonnet" | "opus" | "auto">(
+    isModel(initialModel) ? initialModel : "auto",
   );
   const stream = useReviewStream();
 
@@ -65,6 +65,7 @@ function NewReviewForm() {
               disabled={isStreaming}
               className="h-9 rounded-md border bg-background px-3 text-sm"
             >
+              <option value="auto">Auto-route model</option>
               <option value="haiku">Haiku</option>
               <option value="sonnet">Sonnet</option>
               <option value="opus">Opus</option>
