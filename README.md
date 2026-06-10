@@ -13,18 +13,18 @@ An AI agent that reviews GitHub pull requests using code-aware retrieval and too
 ## What makes it interesting
 
 - **Code-aware retrieval**: AST-based chunking with tree-sitter, hybrid BM25 + vector search via pgvector, cross-encoder reranking
-- **Agentic loop**: Tool-using agent that searches code, reads files, finds references, runs tests with a clean ReAct-style control loop
+- **Agent runtime**: A model-agnostic `Agent` (Anthropic / OpenAI / Google / Groq / Ollama behind one seam) driving a typed, streaming ReAct loop with usage + cost accounting, a spend cap, end-to-end cancellation, timeouts, tool concurrency limits, structured termination, and lifecycle hooks. The PR reviewer (`runReview`) is a thin specialization of it — see [ADR-005](./docs/adr/005-agent-runtime.md)
 - **Real evals**: Golden dataset of 50+ historical PRs from popular OSS repos, scored by LLM-as-judge plus deterministic checks
-- **Production concerns**: Prompt caching, semantic caching, model routing, prompt injection defense, full Langfuse tracing
+- **Production concerns**: Prompt caching, semantic caching, model routing, prompt injection defense, full Langfuse tracing (via agent hooks)
 
 ## Architecture
 
 See [`docs/architecture.md`](./docs/architecture.md) for the full stack, folder structure, and design decisions.
 
 ```
-apps/web         → Next.js 15 app
+apps/web         → Next.js 16 app
 apps/indexer     → Python: indexing + evals
-packages/agent   → Agent loop, tools, prompts, retrieval
+packages/agent   → Agent runtime + runReview, tools, prompts, retrieval, providers
 packages/db      → Drizzle schemas
 packages/shared  → Cross-app types
 scripts/cli.mjs  → Interactive task menu (pnpm cli)
@@ -32,7 +32,7 @@ scripts/cli.mjs  → Interactive task menu (pnpm cli)
 
 ## Stack
 
-- **Web**: Next.js 15, React 19, TypeScript 5, Tailwind 4, shadcn/ui, Vercel AI SDK
+- **Web**: Next.js 16, React 19, TypeScript 5, Tailwind 4, shadcn/ui
 - **Data**: Postgres (Supabase) + pgvector, Drizzle ORM
 - **AI**: Anthropic Claude (primary), OpenAI (fallback), Voyage `voyage-code-3` (embeddings), Cohere `rerank-3`
 - **Python**: 3.12, uv, Ruff, Pydantic v2, tree-sitter
