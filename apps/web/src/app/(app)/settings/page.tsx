@@ -42,10 +42,12 @@ function ApiKeyField({
   label,
   placeholder,
   envVar,
+  disabled,
 }: {
   label: string;
   placeholder: string;
   envVar: string;
+  disabled?: boolean;
 }) {
   const [value, setValue] = useState("");
   const [visible, setVisible] = useState(false);
@@ -66,12 +68,14 @@ function ApiKeyField({
           placeholder={placeholder}
           value={value}
           onChange={(e) => setValue(e.target.value)}
+          disabled={disabled}
           className="pr-8 font-mono text-xs"
         />
         <button
           type="button"
           onClick={() => setVisible((v) => !v)}
-          className="-translate-y-1/2 absolute top-1/2 right-2 text-muted-foreground transition-colors hover:text-foreground"
+          disabled={disabled}
+          className="-translate-y-1/2 absolute top-1/2 right-2 text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
           aria-label={visible ? "Hide key" : "Show key"}
         >
           {visible ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
@@ -173,11 +177,14 @@ export default function SettingsPage() {
   return (
     <div className="flex max-w-2xl flex-col gap-6">
       {/* Header */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
         <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10">
           <Settings className="size-4 text-primary" />
         </div>
         <h1 className="font-semibold text-xl tracking-tight">Settings</h1>
+        <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 font-medium text-[10px] text-amber-400">
+          Preview — not yet wired up
+        </span>
       </div>
 
       {/* API Keys */}
@@ -188,13 +195,28 @@ export default function SettingsPage() {
           description="Override default keys for each provider. Leave blank to use environment variables."
         />
         <div className="mt-4 flex flex-col gap-3">
-          <ApiKeyField label="Anthropic" placeholder="sk-ant-…" envVar="ANTHROPIC_API_KEY" />
-          <ApiKeyField label="OpenAI (fallback)" placeholder="sk-…" envVar="OPENAI_API_KEY" />
-          <ApiKeyField label="Voyage (embeddings)" placeholder="pa-…" envVar="VOYAGE_API_KEY" />
-          <ApiKeyField label="Cohere (reranker)" placeholder="…" envVar="COHERE_API_KEY" />
+          <ApiKeyField
+            label="Anthropic"
+            placeholder="sk-ant-…"
+            envVar="ANTHROPIC_API_KEY"
+            disabled
+          />
+          <ApiKeyField
+            label="OpenAI (fallback)"
+            placeholder="sk-…"
+            envVar="OPENAI_API_KEY"
+            disabled
+          />
+          <ApiKeyField
+            label="Voyage (embeddings)"
+            placeholder="pa-…"
+            envVar="VOYAGE_API_KEY"
+            disabled
+          />
+          <ApiKeyField label="Cohere (reranker)" placeholder="…" envVar="COHERE_API_KEY" disabled />
         </div>
         <div className="mt-4 flex justify-end">
-          <Button size="sm" variant="outline">
+          <Button size="sm" variant="outline" disabled>
             Save Keys
           </Button>
         </div>
@@ -258,7 +280,7 @@ export default function SettingsPage() {
           <p className="font-medium text-destructive/90 text-sm">Reset to defaults</p>
           <p className="text-muted-foreground text-xs">Clear all locally stored preferences.</p>
         </div>
-        <Button variant="destructive" size="sm">
+        <Button variant="destructive" size="sm" disabled>
           <RotateCcw className="size-3.5" />
           Reset
         </Button>

@@ -261,6 +261,15 @@ const tree = {
             label: "Python tests (indexer)",
             run: { cmd: "uv", args: ["run", "pytest"], cwd: INDEXER_DIR },
           },
+          {
+            label: "E2E smoke test (Playwright)",
+            run: {
+              cmd: "pnpm",
+              args: ["--filter", "@acr/web", "e2e"],
+              confirm:
+                "Runs Playwright smoke tests. Requires browser binaries (npx playwright install).",
+            },
+          },
         ],
       },
     },
@@ -345,6 +354,21 @@ const tree = {
           {
             label: "Sync dependencies (uv sync)",
             run: { cmd: "uv", args: ["sync"], cwd: INDEXER_DIR },
+          },
+          {
+            label: "Index a repo",
+            action: async () => {
+              const url = await rl.question(`${cyan("?")} Repo URL (https://github.com/…): `);
+              if (!url.trim()) {
+                console.log(yellow("  Cancelled — no URL provided."));
+                return;
+              }
+              await runChild({
+                cmd: "uv",
+                args: ["run", "python", "-m", "indexer.cli", "index", url.trim()],
+                cwd: INDEXER_DIR,
+              });
+            },
           },
           {
             label: "Ruff check",

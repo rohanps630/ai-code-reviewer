@@ -12,7 +12,15 @@ import { serverEnv } from "@/lib/env";
 function createRateLimiter(): Ratelimit | null {
   const url = serverEnv.UPSTASH_REDIS_REST_URL;
   const token = serverEnv.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
+  if (!url || !token) {
+    if (process.env.NODE_ENV === "production") {
+      console.warn(
+        "\n⚠️  [rate-limit] UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN not set.\n" +
+          "   Rate limiting is DISABLED in production. Set the Upstash env vars to enable it.\n",
+      );
+    }
+    return null;
+  }
 
   return new Ratelimit({
     redis: new Redis({ url, token }),

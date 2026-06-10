@@ -5,7 +5,7 @@ const FEATURES = [
   {
     icon: GitPullRequest,
     title: "Pull Request Reviews",
-    description: "Paste any unified diff and get a structured, structured code review in seconds.",
+    description: "Paste any unified diff and get a structured code review in seconds.",
   },
   {
     icon: Search,

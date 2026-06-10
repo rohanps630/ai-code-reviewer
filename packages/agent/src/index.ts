@@ -8,6 +8,15 @@
 export { runReview, routeModel, sanitizeUntrustedText } from "./loop.js";
 export type { Finding, ReviewChunk, ReviewInput, ReviewOutput } from "./types.js";
 
+// Model resolution — tier labels → concrete model IDs + providers.
+export {
+  MODEL_TIERS,
+  PRICING_USD_PER_MTOK,
+  resolveModelId,
+  resolveProviderForTier,
+} from "./models.js";
+export type { ProviderEnvKeys, Tier } from "./models.js";
+
 // Declarative, model-agnostic agent primitive (ADR-003). Separate from
 // the code-review `runReview` loop; reuses the tool framework.
 export { Agent, AgentMaxIterationsError } from "./agent.js";

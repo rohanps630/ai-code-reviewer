@@ -15,6 +15,7 @@ This is a personal portfolio project. Security expectations are:
 
 - The agent receives untrusted content from public repos. Prompt injection defenses are applied (delimiters, system reminders, output validation) but cannot be assumed bulletproof. Do not connect repos containing secrets you don't want surfaced in agent outputs.
 - Code execution happens inside E2B sandboxes. Do not pass production credentials to any tool.
+- When `ACCESS_KEY` is set, API clients must send the `x-access-key` header; the web UI does not yet attach it, so the gate currently protects server-to-server / curl access only.
 
 ## What this project doesn't do
 

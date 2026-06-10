@@ -39,9 +39,8 @@ These are decided. Do not substitute without a written ADR in `docs/adr/`.
 
 ### App layer
 - **Monorepo**: pnpm workspaces + Turborepo
-- **Web app**: Next.js 15 (App Router) + React 19 + TypeScript 5 (strict)
+- **Web app**: Next.js 16 (App Router) + React 19 + TypeScript 5 (strict)
 - **Styling**: Tailwind CSS 4 + shadcn/ui
-- **Streaming**: Vercel AI SDK 5
 - **Validation**: Zod 3 at every external boundary
 
 ### Data
@@ -78,7 +77,7 @@ These are decided. Do not substitute without a written ADR in `docs/adr/`.
 ```
 ai-code-reviewer/
 ├── apps/
-│   ├── web/                    # Next.js 15 app
+│   ├── web/                    # Next.js 16 app
 │   └── indexer/                # Python indexer + eval runner
 ├── packages/
 │   ├── agent/                  # PROTECTED: loop, tools, prompts, retrieval
