@@ -35,6 +35,13 @@ export const reviews = pgTable("reviews", {
   // Cost — numeric, never float (coding-style.md)
   cost_usd: numeric("cost_usd", { precision: 10, scale: 6 }),
 
+  // Caching metadata (Phase 5)
+  cache_status: text("cache_status")
+    .$type<"exact" | "semantic" | "miss">()
+    .notNull()
+    .default("miss"),
+  prompt_cache_tokens: integer("prompt_cache_tokens").notNull().default(0),
+
   // Timestamps — always timestamptz (coding-style.md)
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp("updated_at", { withTimezone: true })

@@ -26,3 +26,8 @@ export type NewDocument = InferInsertModel<typeof documents>;
 
 export type Chunk = InferSelectModel<typeof chunks>;
 export type NewChunk = InferInsertModel<typeof chunks>;
+
+// Phase 5
+import type { semanticCache } from "./schema/semantic_cache.js";
+export type SemanticCache = InferSelectModel<typeof semanticCache>;
+export type NewSemanticCache = InferInsertModel<typeof semanticCache>;

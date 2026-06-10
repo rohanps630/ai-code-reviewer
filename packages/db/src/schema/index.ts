@@ -11,3 +11,6 @@ export { reviews } from "./reviews.js";
 export { repos } from "./repos.js";
 export { documents } from "./documents.js";
 export { chunks } from "./chunks.js";
+
+// Phase 5 — production concerns
+export { semanticCache } from "./semantic_cache.js";

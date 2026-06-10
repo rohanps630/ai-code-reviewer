@@ -15,6 +15,13 @@
       "when": 1778939153779,
       "tag": "0001_overconfident_chamber",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781035282253,
+      "tag": "0002_sad_kree",
+      "breakpoints": true
     }
   ]
 }

@@ -14,7 +14,7 @@
  */
 
 // Table definitions
-export { reviews, repos, documents, chunks } from "./schema/index.js";
+export { reviews, repos, documents, chunks, semanticCache } from "./schema/index.js";
 
 // Inferred types — use these in application code, not raw Drizzle types
 export type {
@@ -26,6 +26,8 @@ export type {
   NewDocument,
   Chunk,
   NewChunk,
+  SemanticCache,
+  NewSemanticCache,
 } from "./types.js";
 
 // Query helpers — re-exported so consumers use the same drizzle-orm
