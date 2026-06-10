@@ -6,15 +6,14 @@ An AI agent that reviews GitHub pull requests using code-aware retrieval and too
 
 ## Demo
 
-<!-- Add screenshot or Loom once Phase 1 ships -->
-
-[Live demo](https://your-deploy-url.vercel.app) · [Blog post series](https://your-blog.com/ai-code-reviewer)
+Not yet deployed to a public URL — run it locally with the [Getting started](#getting-started)
+steps below. (A hosted demo and walkthrough screenshots are planned.)
 
 ## What makes it interesting
 
 - **Code-aware retrieval**: AST-based chunking with tree-sitter, hybrid BM25 + vector search via pgvector, cross-encoder reranking
 - **Agent runtime**: A model-agnostic `Agent` (Anthropic / OpenAI / Google / Groq / Ollama behind one seam) driving a typed, streaming ReAct loop with usage + cost accounting, a spend cap, end-to-end cancellation, timeouts, tool concurrency limits, structured termination, and lifecycle hooks. The PR reviewer (`runReview`) is a thin specialization of it — see [ADR-005](./docs/adr/005-agent-runtime.md)
-- **Real evals**: Golden dataset of 50+ historical PRs from popular OSS repos, scored by LLM-as-judge plus deterministic checks
+- **Real evals**: Versioned golden dataset (currently 30 synthetic seeded examples spanning bug/security/perf/logic categories; real public-PR curation in progress), scored by LLM-as-judge plus deterministic checks; the eval CI workflow runs the harness and posts the run summary as a PR comment
 - **Production concerns**: Prompt caching, semantic caching, model routing, prompt injection defense, full Langfuse tracing (via agent hooks)
 
 ## Architecture
@@ -34,9 +33,9 @@ scripts/cli.mjs  → Interactive task menu (pnpm cli)
 
 - **Web**: Next.js 16, React 19, TypeScript 5, Tailwind 4, shadcn/ui
 - **Data**: Postgres (Supabase) + pgvector, Drizzle ORM
-- **AI**: Anthropic Claude (primary), OpenAI (fallback), Voyage `voyage-code-3` (embeddings), Cohere `rerank-3`
+- **AI**: Anthropic Claude (primary), OpenAI (fallback), Voyage `voyage-code-3` (embeddings), Cohere `rerank-v3.5` (optional rerank), E2B (sandboxed test execution)
 - **Python**: 3.12, uv, Ruff, Pydantic v2, tree-sitter
-- **Ops**: Langfuse, Sentry, Vercel, Modal
+- **Ops**: Langfuse (tracing), Sentry (errors), Vercel (web deploy); Modal (Python jobs) planned
 
 ## Getting started
 

@@ -82,6 +82,20 @@ jobs:
         id: dataset
         run: echo "name=${{ inputs.dataset || 'v1' }}" >> "$GITHUB_OUTPUT"
 
+      # Derive the prompt version from source so this never drifts from
+      # CURRENT_PROMPT_VERSION in packages/agent/src/prompts/index.ts.
+      - name: Resolve prompt version
+        id: prompt
+        run: |
+          version=$(sed -nE 's/.*CURRENT_PROMPT_VERSION = "([^"]+)".*/\1/p' \
+            packages/agent/src/prompts/index.ts)
+          if [ -z "$version" ]; then
+            echo "could not resolve CURRENT_PROMPT_VERSION from source" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Resolved prompt version: $version"
+
       # ───── Run eval pass (only if secrets are configured) ─────
       - name: Run eval pass
         id: run
@@ -104,7 +118,7 @@ jobs:
             --dataset "${{ steps.dataset.outputs.name }}" \
             --no-delta \
             --agent-version "${{ github.sha }}" \
-            --prompt-version "v0.2" \
+            --prompt-version "${{ steps.prompt.outputs.version }}" \
             --output-dir "${{ runner.temp }}/eval-out" \
             --run-id "ci-${{ github.run_id }}-${{ steps.dataset.outputs.name }}"
 

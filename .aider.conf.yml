@@ -1,0 +1,11 @@
+# Aider config — see CONVENTIONS.md.
+#
+# Aider does not auto-read AGENTS.md, so load the repo's canonical agent
+# context on every session. The pointer chain resolves to the single source
+# of truth: CONVENTIONS.md → AGENTS.md → docs/guidelines.md.
+#
+# This file is a thin pointer; put project rules in docs/guidelines.md so every
+# agent gets them (see docs/guidelines.md § 9).
+read:
+  - CONVENTIONS.md
+  - AGENTS.md

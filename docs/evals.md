@@ -74,7 +74,7 @@ Rubric (0–1):
 - 0.7 — correct issue but unclear/poorly explained
 - 1.0 — correct, well-explained, actionable
 
-The judge prompt is in `apps/indexer/src/evals/judges/main_judge.py` and is itself versioned.
+The judge prompt is in `apps/indexer/src/evals/judges/versions/main_judge_v1.py` and is itself versioned (the version is `main_judge_v1`).
 
 ### Deterministic
 
@@ -84,7 +84,9 @@ A Python scorer parses the agent's output and checks:
 - `false_positives`: int — findings that don't match ground truth AND aren't in `false_positive_traps`
 - `false_positive_traps_triggered`: int — explicit traps the agent fell for
 
-Semantic matching uses a small embedding similarity check, not regex.
+Summary matching uses Jaccard token-overlap against a tunable threshold (see
+`apps/indexer/src/evals/scorers/tokens.py`), not regex or exact string match. An
+embedding-based matcher is a planned upgrade.
 
 ### Aggregate metrics
 
@@ -126,11 +128,18 @@ The benchmark truncates the fixture repo's rows on every run; don't aim it at a 
 
 ## Comparing runs
 
+`run` automatically compares against the most recent prior `summary.json` in the
+results root and includes per-metric deltas in the output — pass `--no-delta` to
+disable it:
+
 ```bash
-uv run python -m evals.cli compare <run-id-1> <run-id-2>
+uv run python -m evals.cli run --dataset v1   # deltas vs the latest prior run
+uv run python -m evals.cli run --dataset v1 --no-delta
 ```
 
-Produces a markdown table of deltas. The CI workflow does this automatically on PR.
+There is no standalone `compare` subcommand yet. The eval CI workflow posts each
+run's summary as a PR comment; it runs with `--no-delta` because its results dir
+is ephemeral (no committed baseline to diff against).
 
 ## What a good run looks like
 

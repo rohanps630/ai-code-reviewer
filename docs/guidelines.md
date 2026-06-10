@@ -47,13 +47,13 @@ These are decided. Do not substitute without a written ADR in `docs/adr/`.
 - **Database**: Postgres 16+ via Supabase
 - **Vector**: pgvector with HNSW indexes
 - **ORM**: Drizzle (not Prisma)
-- **Auth**: Supabase Auth
+- **Auth**: API access-key gate today (`x-access-key`, see `apps/web/src/lib/access-key.ts`); Supabase Auth is the planned end-state, not yet implemented
 
 ### AI
 - **Primary LLM**: Anthropic Claude (Sonnet/Opus)
 - **Fallback LLM**: OpenAI
 - **Embeddings**: Voyage `voyage-code-3`
-- **Reranker**: Cohere `rerank-3`
+- **Reranker**: Cohere `rerank-v3.5` (optional — used when `COHERE_API_KEY` is set)
 - **Code sandbox**: E2B (when executing untrusted code)
 
 ### Indexer / evals (Python)
@@ -68,7 +68,7 @@ These are decided. Do not substitute without a written ADR in `docs/adr/`.
 - **Tests**: Vitest (unit), Playwright (E2E), pytest (Python)
 - **Tracing**: Langfuse
 - **Errors**: Sentry
-- **Deploy**: Vercel (web), Modal (Python jobs)
+- **Deploy**: Vercel (web). Modal (Python jobs) is planned — no Modal config in the repo yet; the indexer + evals run via the CLI locally / in CI today.
 
 ---
 
@@ -317,7 +317,8 @@ Junie, Google Antigravity, and the GitHub Copilot coding agent.
    `docs/coding-style.md`, ADRs → `docs/adr/`.
 3. The root `AGENTS.md` and the tool-specific files (`CLAUDE.md`,
    `.cursorrules`, `.cursor/rules/*`, `.kiro/steering/*`, `GEMINI.md`,
-   `.github/copilot-instructions.md`, `.clinerules/*`, `CONVENTIONS.md`)
+   `.github/copilot-instructions.md`, `.clinerules/*`, `CONVENTIONS.md`,
+   `.aider.conf.yml`)
    exist only so each agent's discovery mechanism resolves to this
    canonical content. Do not put unique guidance in any of them.
 4. Adding support for a new agent? Create the tool's expected file at

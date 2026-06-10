@@ -5,28 +5,31 @@
 ## High-level
 
 ```
-GitHub webhook ──▶ apps/web /api/webhooks/github
+diff submitted ──▶ apps/web /api/reviews
                           │
                           ▼
-                  packages/agent (loop)
+                  packages/agent (Agent runtime → runReview)
                           │
                   ┌───────┼───────┬──────────────┐
                   ▼       ▼       ▼              ▼
-              Postgres   LLM    Embed/Rerank   GitHub
-              (pgvector) (Claude) (Voyage/      API
+              Postgres   LLM    Embed/Rerank   E2B
+              (pgvector) (Claude) (Voyage/      sandbox
                                   Cohere)
 
-Background (apps/indexer, Python on Modal):
+Background (apps/indexer, Python; Modal deploy planned):
    repo clone ─▶ tree-sitter chunks ─▶ embeddings ─▶ Postgres
-   PR replay  ─▶ agent run         ─▶ judge       ─▶ eval results
+   PR replay  ─▶ agent run         ─▶ judge       ─▶ eval results (JSON)
 ```
+
+> Note: PR ingestion today is a diff submitted through the web UI / `/api/reviews`.
+> A GitHub-webhook entry point is planned, not yet implemented.
 
 ## Monorepo layout
 
 ```
 ai-code-reviewer/
 ├── apps/
-│   ├── web/                Next.js 15 app (UI + API + agent execution)
+│   ├── web/                Next.js 16 app (UI + API + agent execution)
 │   └── indexer/            Python worker: indexing, evals
 ├── packages/
 │   ├── agent/              Protected: loop, tools, prompts, retrieval
@@ -56,13 +59,13 @@ apps/web/
 │   │   │   └── settings/
 │   │   ├── api/
 │   │   │   ├── reviews/route.ts
-│   │   │   └── webhooks/github/route.ts
+│   │   │   └── repos/route.ts
 │   │   └── layout.tsx
 │   ├── components/
 │   │   ├── ui/                 # shadcn primitives (auto-generated)
 │   │   └── features/           # Domain components (your code)
 │   ├── lib/
-│   │   ├── auth.ts
+│   │   ├── access-key.ts       # API access-key guard
 │   │   └── env.ts              # Re-exports from packages/shared
 │   └── styles/
 └── public/
@@ -127,15 +130,16 @@ packages/agent/src/
 ├── tools/
 │   ├── search-code.ts      # Hybrid retrieval over chunks
 │   ├── read-file.ts        # Direct file read by path or symbol
-│   ├── find-references.ts  # Symbol cross-references
+│   ├── find-references.ts  # Symbol lookup (BM25 phrase match; real
+│   │                       #   tree-sitter reference resolution planned)
 │   ├── run-tests.ts        # E2B sandbox execution
-│   ├── get-pr-discussion.ts
-│   └── index.ts            # Registry, auto-aggregates exports
+│   ├── registry.ts         # Tool registry
+│   └── index.ts            # Auto-aggregates exports
 ├── prompts/
 │   ├── versions/
 │   │   ├── system-v0.1.ts
 │   │   ├── system-v0.2.ts
-│   │   └── ...
+│   │   └── system-v0.3.ts  # CURRENT
 │   └── index.ts            # Exports CURRENT version
 ├── retrieval/
 │   ├── hybrid.ts           # BM25 + vector + rerank
@@ -164,39 +168,44 @@ Key principles:
 
 ## Data model
 
-Schemas live in `packages/db/src/schema/`. Tables, with phase introduced:
+Schemas live in `packages/db/src/schema/`. **Tables that exist today:**
 
-### Phase 1
-- `reviews` — one row per review request, with diff, output, model, tokens, cost
-
-### Phase 2
+- `reviews` — one row per review request, with diff, output (jsonb), status,
+  model, tokens, cost, and the Phase 5 cache columns (`cache_status`,
+  `prompt_cache_tokens`)
 - `repos` — connected GitHub repositories
 - `documents` — files in indexed repos
-- `chunks` — AST-aware chunks with embeddings (pgvector, HNSW index)
-
-### Phase 3
-- `agent_runs` — one per agent execution
-- `agent_steps` — every model call and tool call, with timing and cost
-
-### Phase 4
-- `eval_datasets` — versioned datasets
-- `eval_examples` — individual PRs with ground truth
-- `eval_runs` — one per harness execution
-- `eval_results` — per-example score in a run
-
-### Phase 5
-- `semantic_cache` — cached responses by query embedding
-- Plus added columns on existing tables for cache hits, prompt cache tokens
+- `chunks` — AST-aware chunks with embeddings (pgvector, HNSW index) and a
+  generated `content_tsv` tsvector (GIN index) for BM25
+- `semantic_cache` — cached responses by query embedding (HNSW index)
 
 See `packages/db/src/schema/*.ts` for current column definitions.
 
+**Planned (not yet in the schema):**
+
+- `agent_runs` / `agent_steps` — persist each agent execution and every
+  model/tool step with timing and cost, to power run/step replay. The runtime
+  already emits a complete event stream (`packages/agent/src/agent-types.ts`);
+  these tables are the persistence layer for it.
+- `eval_*` tables — eval runs currently write to JSON under
+  `evals/results/<run-id>/` rather than Postgres; a DB-backed eval store is a
+  future option, not a current dependency.
+
 ## Streaming
 
-- **Inside the agent loop**: token streaming from Claude flows directly to the client via Vercel AI SDK's `streamText`.
+- **Inside the agent loop**: the `Agent` runtime's `stream()` emits a typed
+  `AgentEvent` sequence; `runReview` maps it onto a `ReviewChunk` stream.
 - **Tool calls stream their state**: "Searching code…" → "Reading auth.ts…" → "Running tests…" → review output continues.
-- **UI updates progressively**: tool state shown in a sidebar, review markdown rendered in the main column.
+- **UI updates progressively**: tool state shown in a timeline, review markdown rendered in the main column.
 
-The streaming protocol used is Server-Sent Events via Vercel AI SDK's data stream. No raw WebSockets.
+The transport is newline-delimited JSON (`Content-Type: application/x-ndjson`)
+over a streamed HTTP response from `/api/reviews` — not the Vercel AI SDK and
+not raw WebSockets. The client parses chunks line-by-line
+(`apps/web/src/components/features/reviews/use-review-stream.ts`).
+
+> Note: the event stream is currently transient — it is rendered live but only
+> the final review output is persisted. Per-step persistence + replay is the
+> planned `agent_runs`/`agent_steps` work (see Data model).
 
 ## Retrieval pipeline (Phase 2+)
 
@@ -206,8 +215,8 @@ For each review:
 2. **BM25 search** in Postgres full-text index
 3. **Vector search** in pgvector with HNSW
 4. **Merge + dedupe** results (RRF — reciprocal rank fusion)
-5. **Rerank** top 30 with Cohere `rerank-3`
-6. **Take top 10** as context for the agent
+5. **Rerank** top candidates with Cohere `rerank-v3.5` (optional — skipped when `COHERE_API_KEY` is unset, in which case RRF order is used directly)
+6. **Take top results** as context for the agent
 
 Implemented in `packages/agent/src/retrieval/hybrid.ts`.
 
@@ -233,16 +242,16 @@ For each eval run:
 3. Score with two judges:
    - **LLM-as-judge**: rubric-based score 0–1 with Claude Sonnet
    - **Deterministic**: did the agent's findings include the ground-truth issue? false-positive count?
-4. Write per-example results to Postgres
+4. Write per-example traces to `evals/results/<run-id>/raw/*.json`
 5. Compute aggregates: mean scores, P50/P95 latency, total cost
-6. Compare to most recent prior run, compute deltas
+6. Compare to most recent prior run, compute deltas (unless `--no-delta`)
 7. Output `summary.json` to `evals/results/<run-id>/`
 
 ## Observability
 
 - **Langfuse**: every LLM call traced, with tool call sub-spans, full I/O, latency, cost
 - **Sentry**: exceptions in web app and Python jobs
-- **Postgres**: structured logs in `reviews` + `agent_runs` + `agent_steps` for SQL analysis
+- **Postgres**: per-review rows in `reviews` (model, status, tokens, cost, cache status) for SQL analysis. Per-step `agent_runs`/`agent_steps` logging is planned (see Data model).
 - **Vercel Analytics**: web app traffic and Core Web Vitals
 
 ## Caching layers
@@ -287,15 +296,15 @@ exits. The same rule lives in `AGENTS.md` § 6 → "Interactive CLI" and
 ## Deployment
 
 - **`apps/web`** → Vercel (auto-deploy on `main` push)
-- **`apps/indexer`** → Modal (cron-scheduled re-index + on-demand eval runs)
+- **`apps/indexer`** → Modal (cron-scheduled re-index + on-demand eval runs) — *planned; no Modal config in the repo yet. Indexer + evals run via the CLI locally / in CI today.*
 - **Postgres** → Supabase (managed)
 - **Cache** → Upstash Redis (serverless)
 
 ## Security boundaries
 
 - **All external input validated through Zod** before reaching agent logic
-- **GitHub webhook signature verified** before processing
-- **Code retrieved from repos is treated as untrusted content** — prompt injection defense applied (delimiters, instructional reminders in system prompt)
+- **API routes are guarded** by an access-key check (`x-access-key`) and per-IP rate limiting; GitHub webhook signature verification is planned alongside the webhook entry point
+- **Code retrieved from repos is treated as untrusted content** — prompt injection defense applied (delimiters + sanitization of closing tags, instructional reminders in system prompt)
 - **E2B sandbox** for any tool that executes code; nothing runs on app servers
 - **No secrets in logs** — Langfuse and Sentry both scrub known env var names
 - **Read-only DB user** for analytics queries
