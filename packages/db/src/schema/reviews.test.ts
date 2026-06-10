@@ -20,7 +20,7 @@ describe("reviews table schema", () => {
     expect(getTableName(reviews)).toBe("reviews");
   });
 
-  it("defines all expected Phase 1 columns", () => {
+  it("defines all expected Phase 1 and Phase 5 columns", () => {
     const columnNames = Object.keys(reviews);
     const expected = [
       "id",
@@ -31,6 +31,8 @@ describe("reviews table schema", () => {
       "input_tokens",
       "output_tokens",
       "cost_usd",
+      "cache_status",
+      "prompt_cache_tokens",
       "created_at",
       "updated_at",
     ];
@@ -40,15 +42,9 @@ describe("reviews table schema", () => {
     }
   });
 
-  it("does not define Phase 2+ columns", () => {
+  it("does not define other Phase 2+ columns", () => {
     const columnNames = Object.keys(reviews);
-    const phase2Plus = [
-      "repo_id",
-      "chunk_ids",
-      "cache_status",
-      "prompt_cache_tokens",
-      "agent_run_id",
-    ];
+    const phase2Plus = ["repo_id", "chunk_ids", "agent_run_id"];
 
     for (const col of phase2Plus) {
       expect(columnNames, `column "${col}" should not exist until its phase`).not.toContain(col);
