@@ -17,9 +17,9 @@
  * tell us the BM25 approximation is hurting recall.
  */
 
-import { sql } from "@acr/db";
 import { z } from "zod";
 
+import type { CodeSource, ReferenceResult } from "./code-source.js";
 import type { JsonSchemaObject, Tool } from "./types.js";
 
 const InputSchema = z.object({
@@ -72,30 +72,17 @@ const INPUT_JSON_SCHEMA: JsonSchemaObject = {
   },
 };
 
-export interface FindReferencesExecutor {
-  execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
-}
-
-type ReferenceRow = {
-  path: string;
-  start_line: number;
-  end_line: number;
-  symbol_name: string | null;
-  symbol_kind: string | null;
-  content: string;
-};
-
 /**
  * Creates a tool to find symbol cross-references via BM25 search.
  *
- * @param executor - The SQL query executor client.
+ * @param codeSource - The source for finding references.
  * @returns A Tool instance configured to find symbol references.
  *
  * @example
- * const findRefsTool = createFindReferencesTool(dbExecutor);
+ * const findRefsTool = createFindReferencesTool(codeSource);
  */
 export function createFindReferencesTool(
-  executor: FindReferencesExecutor,
+  codeSource: CodeSource,
 ): Tool<FindReferencesInput, FindReferencesOutput> {
   return {
     name: "find_references",
@@ -110,29 +97,8 @@ export function createFindReferencesTool(
     inputValidator: InputSchema,
     outputValidator: OutputSchema,
     execute: async (input) => {
-      const repoFilter = input.repo_id ? sql`and c.repo_id = ${input.repo_id}::uuid` : sql``;
       const limit = input.limit ?? 20;
-
-      // plainto_tsquery would split the symbol; phraseto_tsquery would
-      // tokenize too aggressively for identifier-like inputs. Direct
-      // to_tsquery with the bare lexeme is the cleanest match.
-      const tsq = sql`to_tsquery('english', ${input.symbol})`;
-
-      const rows = (await executor.execute(sql`
-        select
-          d.path        as path,
-          c.start_line  as start_line,
-          c.end_line    as end_line,
-          c.symbol_name as symbol_name,
-          c.symbol_kind as symbol_kind,
-          c.content     as content
-        from chunks c
-        join documents d on d.id = c.document_id
-        where c.content_tsv @@ ${tsq}
-          ${repoFilter}
-        order by ts_rank_cd(c.content_tsv, ${tsq}) desc
-        limit ${limit}
-      `)) as unknown as ReferenceRow[];
+      const rows = await codeSource.findReferences(input.symbol, limit, input.repo_id);
 
       return {
         symbol: input.symbol,
@@ -142,7 +108,7 @@ export function createFindReferencesTool(
   };
 }
 
-function toReference(row: ReferenceRow): FindReferencesOutput["references"][number] {
+function toReference(row: ReferenceResult): FindReferencesOutput["references"][number] {
   // Trim the snippet to ~10 lines around the first occurrence so the
   // prompt doesn't blow up when a chunk is huge.
   const snippet = trimAroundSymbol(row.content);

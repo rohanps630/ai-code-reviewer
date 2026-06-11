@@ -16,6 +16,7 @@ is stable across runs.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from evals.schema import GroundTruth, GroundTruthFinding
@@ -46,6 +47,42 @@ class MatchResult:
     unmatched_truth_indices: tuple[int, ...] = field(default_factory=tuple)
 
 
+def _parse_location_hint(hint: str) -> tuple[str, int, int] | None:
+    if not hint:
+        return None
+    match = re.match(r"^(.*?):(\d+)(?:-(\d+))?$", hint.strip())
+    if not match:
+        return None
+    filepath, start_str, end_str = match.groups()
+    start = int(start_str)
+    end = int(end_str) if end_str else start
+    return filepath, start, end
+
+
+def _location_overlaps(pred_hint: str | None, truth_hint: str | None) -> bool:
+    if not truth_hint:
+        return True
+
+    truth_parsed = _parse_location_hint(truth_hint)
+    if not truth_parsed:
+        return True
+
+    if not pred_hint:
+        return False
+
+    pred_parsed = _parse_location_hint(pred_hint)
+    if not pred_parsed:
+        return False
+
+    t_file, t_start, t_end = truth_parsed
+    p_file, p_start, p_end = pred_parsed
+
+    if t_file != p_file:
+        return False
+
+    return max(p_start, t_start) <= min(p_end, t_end)
+
+
 def _best_match(
     predicted: PredictedFinding,
     truths: list[GroundTruthFinding],
@@ -57,6 +94,10 @@ def _best_match(
     for i, truth in enumerate(truths):
         if i in used_truth_indices:
             continue
+
+        if not _location_overlaps(predicted.location_hint, truth.location_hint):
+            continue
+
         sim = summary_similarity(predicted.summary, truth.summary)
         if sim < threshold:
             continue

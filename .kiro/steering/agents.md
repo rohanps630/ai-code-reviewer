@@ -13,7 +13,7 @@ commit format, prompt-versioning policy, and the "never do" rules — is **`docs
 ("Agent context — single source of truth").
 
 #[[file:../../docs/guidelines.md]]
-#[[file:../../docs/architecture.md]]
-#[[file:../../docs/coding-style.md]]
+#[[file:../../architecture/components.json]]
+#[[file:../../standards/coding-conventions.md]]
 #[[file:../../docs/roadmap.md]]
-#[[file:../../docs/adr/001-stack-choices.md]]
+#[[file:../../knowledge/adr/001-stack-choices.md]]

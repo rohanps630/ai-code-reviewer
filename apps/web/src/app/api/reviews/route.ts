@@ -10,9 +10,7 @@ import {
   exactCacheKey,
   lookupExactCache,
   lookupSemanticCache,
-  respondWithCachedReview,
 } from "@/lib/review-cache";
-import { createReviewStream } from "@/lib/review-stream";
 import { stringifyError } from "@/lib/utils";
 
 const BodySchema = z.object({
@@ -88,29 +86,26 @@ export async function POST(req: Request) {
       const reviewId = await persistCachedReview(diff, selectedModel, exactOutput, "exact");
       trace?.update({ metadata: { reviewId, cacheStatus: "exact" } });
       await langfuse?.flushAsync();
-      return respondWithCachedReview(exactOutput, "exact", reviewId);
+      return Response.json({ reviewId, status: "completed" }, { status: 200 });
     } catch (err) {
       console.error("[reviews] Failed saving exact cache hit:", { error: stringifyError(err) });
     }
   }
 
   // 3. Check semantic cache (Postgres pgvector)
-  const { embedding: queryEmbedding, output: semanticOutput } = await lookupSemanticCache(
-    diff,
-    selectedModel,
-  );
+  const { output: semanticOutput } = await lookupSemanticCache(diff, selectedModel);
   if (semanticOutput) {
     try {
       const reviewId = await persistCachedReview(diff, selectedModel, semanticOutput, "semantic");
       trace?.update({ metadata: { reviewId, cacheStatus: "semantic" } });
       await langfuse?.flushAsync();
-      return respondWithCachedReview(semanticOutput, "semantic", reviewId);
+      return Response.json({ reviewId, status: "completed" }, { status: 200 });
     } catch (err) {
       console.error("[reviews] Failed saving semantic cache hit:", { error: stringifyError(err) });
     }
   }
 
-  // 4. Cache Miss: Run real agent loop
+  // 4. Cache Miss: Enqueue review
   const { db } = await import("@acr/db/client");
   const { reviews } = await import("@acr/db");
   const [inserted] = await db
@@ -124,23 +119,8 @@ export async function POST(req: Request) {
   const reviewId = inserted.id;
 
   trace?.update({ metadata: { reviewId, cacheStatus: "miss" } });
-  const span = trace?.span({ name: "agent-run" });
 
-  const stream = createReviewStream({
-    input: parsed.data,
-    selectedModel,
-    reviewId,
-    redisKey,
-    queryEmbedding,
-    span,
-    langfuse,
-  });
+  await langfuse?.flushAsync();
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "application/x-ndjson; charset=utf-8",
-      "Cache-Control": "no-store",
-      "X-Review-Id": reviewId,
-    },
-  });
+  return Response.json({ reviewId, status: "queued" }, { status: 202 });
 }

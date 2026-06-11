@@ -79,10 +79,12 @@ async function main() {
 
   const startedAt = Date.now();
   let final = null;
+  let finalUsage = null;
   try {
     for await (const chunk of agent.runReview(input)) {
       if (chunk.type === "final") {
         final = chunk.output;
+        finalUsage = chunk.usage;
         // Don't break — let the loop finish cleanly so its own
         // termination logic + telemetry path runs.
       }
@@ -108,7 +110,7 @@ async function main() {
     ok: true,
     review: final,
     latency_ms: latencyMs,
-    cost_usd: 0.0, // see header comment — cost telemetry deferred to Phase 5
+    cost_usd: finalUsage?.costUsd ?? 0.0,
   });
   process.exit(0);
 }

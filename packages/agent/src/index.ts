@@ -67,7 +67,8 @@ export type {
   GoogleClientLike,
   GoogleProviderOptions,
 } from "./providers/index.js";
-export { defaultE2BFactory } from "./tools/index.js";
+export { defaultE2BFactory, PostgresCodeSource } from "./tools/index.js";
+export type { CodeSource, FileResult, ReferenceResult } from "./tools/index.js";
 
 // Retrieval — public surface. Consumers should prefer `searchCode`;
 // the lane helpers and clients are exposed for the eval harness and

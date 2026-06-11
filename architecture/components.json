@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "System Architecture Components. A machine-readable dependency and component graph.",
+  "applications": {
+    "web": {
+      "path": "apps/web",
+      "type": "nextjs-app",
+      "description": "Next.js 16 application providing the user interface, API routes, and agent execution environment.",
+      "dependencies": ["@acr/agent", "@acr/db", "@acr/shared"],
+      "external_dependencies": ["postgres", "redis"]
+    },
+    "indexer": {
+      "path": "apps/indexer",
+      "type": "python-worker",
+      "description": "Python worker for parsing repositories, generating embeddings, and running evaluations.",
+      "dependencies": [],
+      "external_dependencies": ["postgres", "anthropic", "openai", "voyage"]
+    },
+    "cli": {
+      "path": "apps/cli",
+      "type": "typescript-cli",
+      "description": "Interactive command-line tool for local workflow orchestration.",
+      "dependencies": []
+    }
+  },
+  "packages": {
+    "agent": {
+      "path": "packages/agent",
+      "type": "typescript-library",
+      "description": "PROTECTED: Core agent runtime loop, tools, prompt versions, and retrieval pipeline.",
+      "dependencies": ["@acr/db", "@acr/shared"],
+      "external_dependencies": ["anthropic", "openai", "e2b"]
+    },
+    "db": {
+      "path": "packages/db",
+      "type": "typescript-library",
+      "description": "Drizzle ORM schemas, database migrations, and client initialization.",
+      "dependencies": ["@acr/shared"],
+      "external_dependencies": ["postgres"]
+    },
+    "shared": {
+      "path": "packages/shared",
+      "type": "typescript-library",
+      "description": "Cross-cutting types and environment variable validation (Zod).",
+      "dependencies": []
+    },
+    "github": {
+      "path": "packages/github",
+      "type": "typescript-library",
+      "description": "GitHub API integration layer.",
+      "dependencies": []
+    }
+  },
+  "contracts": {
+    "event_stream": {
+      "path": "contracts/event-stream.md",
+      "description": "NDJSON HTTP streaming contract for AgentEvent to ReviewChunk mapping.",
+      "consumers": ["apps/web", "packages/agent"]
+    }
+  }
+}

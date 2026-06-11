@@ -1,6 +1,7 @@
 import {
   CohereReranker,
   HybridRetriever,
+  PostgresCodeSource,
   VoyageClient,
   defaultE2BFactory,
   resolveProviderForTier,
@@ -96,8 +97,8 @@ export function createReviewStream(opts: {
         const deps = {
           provider,
           retriever,
-          // why: Drizzle db satisfies the SqlExecutorLike structural contract (execute: (q: unknown) => Promise<unknown>)
-          executor: db as unknown as { execute: (query: unknown) => Promise<unknown> },
+          // biome-ignore lint/suspicious/noExplicitAny: passing db client
+          codeSource: new PostgresCodeSource(db as any),
           sandboxFactory,
           // Trace model + tool calls via Agent hooks instead of wrapping the
           // provider. Omit when there's no span (Langfuse not configured).

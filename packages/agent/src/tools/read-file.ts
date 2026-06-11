@@ -15,10 +15,10 @@
  * makes Phase 4 evals reproducible.
  */
 
-import { sql } from "@acr/db";
 import { z } from "zod";
 
 import { sanitizeUntrustedText } from "../loop.js";
+import type { CodeSource } from "./code-source.js";
 import type { JsonSchemaObject, Tool } from "./types.js";
 
 const InputSchema = z.object({
@@ -61,31 +61,16 @@ const INPUT_JSON_SCHEMA: JsonSchemaObject = {
   },
 };
 
-/** Minimal contract the tool needs over @acr/db's client. Both
- *  drizzle's db and a raw postgres-js client expose `.execute(sql)`. */
-export interface ReadFileExecutor {
-  execute: (query: ReturnType<typeof sql>) => Promise<unknown>;
-}
-
-type DocumentRow = {
-  document_id: string;
-  language: string | null;
-  content: string;
-  chunk_count: string | number;
-};
-
 /**
  * Creates a tool to fetch an indexed file by its exact path.
  *
- * @param executor - The SQL query executor client.
+ * @param codeSource - The source for reading files.
  * @returns A Tool instance configured to read files.
  *
  * @example
- * const readFileTool = createReadFileTool(dbExecutor);
+ * const readFileTool = createReadFileTool(codeSource);
  */
-export function createReadFileTool(
-  executor: ReadFileExecutor,
-): Tool<ReadFileInput, ReadFileOutput> {
+export function createReadFileTool(codeSource: CodeSource): Tool<ReadFileInput, ReadFileOutput> {
   return {
     name: "read_file",
     description:
@@ -97,34 +82,19 @@ export function createReadFileTool(
     inputValidator: InputSchema,
     outputValidator: OutputSchema,
     execute: async (input) => {
-      const repoFilter = input.repo_id ? sql`and d.repo_id = ${input.repo_id}::uuid` : sql``;
+      const result = await codeSource.readFile(input.path, input.repo_id);
 
-      const rows = (await executor.execute(sql`
-        select
-          d.id        as document_id,
-          d.language  as language,
-          string_agg(c.content, E'\n' order by c.chunk_index) as content,
-          count(c.id) as chunk_count
-        from documents d
-        left join chunks c on c.document_id = d.id
-        where d.path = ${input.path}
-          ${repoFilter}
-        group by d.id, d.language
-        limit 1
-      `)) as unknown as DocumentRow[];
-
-      const row = rows[0];
-      if (!row) {
+      if (!result.found) {
         return { found: false, path: input.path };
       }
 
-      const rawCount = Number(row.chunk_count);
+      const rawCount = result.chunk_count ?? 0;
       return {
         found: true,
         path: input.path,
-        language: row.language,
-        content: `<untrusted_file_content path="${input.path}">\n${sanitizeUntrustedText(row.content ?? "")}\n</untrusted_file_content>`,
-        chunk_count: Number.isFinite(rawCount) && rawCount >= 0 ? rawCount : 0,
+        language: result.language ?? null,
+        content: `<untrusted_file_content path="${input.path}">\n${sanitizeUntrustedText(result.content ?? "")}\n</untrusted_file_content>`,
+        chunk_count: rawCount,
       };
     },
   };

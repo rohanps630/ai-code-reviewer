@@ -35,13 +35,35 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from evals.runner import BridgeResult
 from evals.schema import EvalExample
 from evals.scorers.types import PredictedReview
+
+
+@dataclass(frozen=True)
+class BridgeResult:
+    """What the agent bridge hands back per example."""
+
+    review: PredictedReview
+    latency_ms: int
+    cost_usd: float
+
+
+class AgentBridge(Protocol):
+    """Callable interface for invoking the TS agent.
+
+    The Python runner doesn't care whether this is a subprocess.run on
+    a Node CLI (4.6), an in-process fake (tests), or eventually a
+    direct API call.
+    """
+
+    def __call__(self, example: EvalExample) -> BridgeResult: ...
+
 
 # Repo-relative location of the Node CLI. Resolved at import time so
 # misplacement is caught early.

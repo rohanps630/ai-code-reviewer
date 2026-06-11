@@ -142,115 +142,15 @@ faithful index. See § 6 → "Interactive CLI".
 
 ## 6. Conventions
 
-### TypeScript
-- Strict mode: `strict: true`, `noUncheckedIndexedAccess: true`
-- No `any`. No `as` casts without a `// why:` comment.
-- Validate every external input through Zod (HTTP bodies, env, LLM outputs).
-- Named exports only. No default exports.
-- Absolute imports via `@/` alias. No `../../../`.
-- Functions over classes unless state is essential (e.g., agent instance maintaining configuration and loop state).
-- Define agents declaratively using the custom `Agent` class to keep the orchestrator logic cleanly encapsulated:
-  ```typescript
-  const agent = new Agent({
-    model: "claude-3-5-sonnet-20241022",
-    tools: [searchCode, readFile],
-    systemPrompt: "..."
-  });
-  const response = await agent.run("instruction");
-  ```
-
-
-### Python
-- Type hints on every function signature.
-- Pydantic v2 for cross-boundary data structures.
-- `pathlib.Path` for all file paths.
-- `uv add <pkg>` to add dependencies. Never `pip install`.
-
-### File naming
-| Thing | Convention |
-|---|---|
-| TS files | `kebab-case.ts` |
-| React components | `PascalCase.tsx` |
-| Python files | `snake_case.py` |
-| DB tables | `snake_case`, plural |
-| DB columns | `snake_case` |
-| Env vars | `SCREAMING_SNAKE` |
-
-### Prompts
-- Prompts are **versioned artifacts**, like migrations.
-- Live in `packages/agent/src/prompts/versions/system-vX.Y.ts`.
-- Never edit a published version in place. Bump to next version.
-- Log every change in `docs/prompts.md` with eval delta.
-
-### Commits — Conventional Commits
-```
-<type>(<scope>): <summary>
-```
-Types: `feat`, `fix`, `refactor`, `chore`, `docs`, `test`, `perf`, `eval`.
-
-### Branches
-- `main` — protected, deployable
-- `feat/<name>`, `fix/<name>`, `chore/<name>`, `eval/<name>`
-
-### Imports
-- Absolute imports via `@/` alias inside an app.
-- Cross-package imports via the package name (`@acr/agent`, `@acr/db`, `@acr/shared`).
-- No deep relative paths (`../../../`) — set up a path alias instead.
-
-### Where to put new code
-See the table in `docs/architecture.md` → "Where to put new code". Two
-hard rules carry over here: new agent tools and new prompt versions
-require an explicit human ask (§ 7).
-
-### Version policy
-Pin to the major versions in § 3. Minor/patch bumps are free; major
-bumps require an ADR in `docs/adr/`. Full text in
-`docs/architecture.md` → "Version policy".
-
-### Interactive CLI
-
-`scripts/cli.mjs` (run via `pnpm cli`) is a hand-maintained Node CLI
-that surfaces every routine task — dev, build, test, lint, db, indexer,
-git — behind a numbered menu. It's zero-dep (Node 22+ stdlib only) and
-deliberately easy to extend.
-
-**Keep it in sync with the codebase.** Treat the CLI like any other
-piece of source — it has to be updated alongside the work it wraps:
-
-- Adding a new `package.json` script that humans will run? Add a
-  matching entry to the relevant submenu in `tree`.
-- Adding a new long-running task (dev server, watcher, studio)? Set
-  `longRunning: true` so the menu prints the Ctrl-C hint.
-- Adding a destructive task (clean, migrate, push, drop)? Set
-  `confirm: "<one-sentence warning>"` so the menu prompts for
-  confirmation.
-- Renaming or removing a task? Update or remove its menu entry in
-  the same commit.
-- New top-level workflow (e.g. eval runner in Phase 4)? Add a new
-  submenu rather than overloading an existing one.
-
-The header docstring in `scripts/cli.mjs` documents the three item
-shapes (`menu` / `run` / `action`) and every `run` option. Adding a
-new entry is a single object literal — don't refactor the surrounding
-machinery to fit a one-off command.
+Coding conventions and stack-specific rules have been extracted to the new standards layer.
+Please refer to [`standards/coding-conventions.md`](../standards/coding-conventions.md).
 
 ---
 
 ## 7. Never do
 
-These will be rejected in review every time. No exceptions.
-
-- ❌ **Never modify `packages/agent/src/loop.ts`, `prompts/`, or `retrieval/`** unless the human explicitly asks. Treat them as owned by the human; if a task seems to need a change here, stop and surface it.
-- ❌ Never commit secrets or hardcode API keys.
-- ❌ Never edit a published prompt version in place — bump to next version.
-- ❌ Never write tests that assert on LLM output **content** directly. That's what evals are for. Mock LLMs only for shape/error tests.
-- ❌ Never use `pip` or `pip install`. Use `uv`.
-- ❌ Never use `npm` or `yarn`. Use `pnpm`.
-- ❌ Never introduce a new dependency without justification in the PR description.
-- ❌ Never disable typecheck or lint to ship faster.
-- ❌ Never write code that bypasses Zod validation at API boundaries.
-- ❌ Never commit `.env*` files (other than `.env.example`).
-- ❌ Never let the `scripts/cli.mjs` menu fall out of sync with the actual scripts — add the entry in the same commit as the new command, don't defer it.
+Hard constraints for the system have been extracted to the new standards layer.
+Please refer to [`standards/never-do.md`](../standards/never-do.md).
 
 ---
 

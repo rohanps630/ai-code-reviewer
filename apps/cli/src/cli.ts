@@ -10,7 +10,7 @@ import {
   mapFinding,
   submitReview,
 } from "@acr/github";
-import { LocalRetriever, LocalSqlExecutor } from "./local/index.js";
+import { LocalCodeSource, LocalRetriever } from "./local/index.js";
 
 async function main() {
   const { values } = parseArgs({
@@ -61,13 +61,14 @@ async function main() {
 
   const provider = anthropic("claude-3-5-sonnet-20241022", { apiKey });
   const retriever = new LocalRetriever();
-  const executor = new LocalSqlExecutor();
+  const codeSource = new LocalCodeSource();
+
   const generator = runReview(
-    { diff },
+    { diff, model: "auto" },
     {
       provider,
       retriever,
-      executor,
+      codeSource,
       hooks: {
         beforeToolCall: async (_ctx: unknown) => {},
       },
@@ -78,9 +79,6 @@ async function main() {
   for await (const event of generator) {
     if (event.type === "final") {
       result = (event as { output: unknown }).output;
-    } else if (event.type === "error") {
-      console.error("Agent run encountered an error:", (event as { message: string }).message);
-      process.exit(1);
     }
   }
 
@@ -99,6 +97,7 @@ async function main() {
       summary: output.summary,
       findings: mappedFindings,
     });
+    // biome-ignore lint/suspicious/noConsole: CLI output
     console.log(JSON.stringify(payload, null, 2));
     process.exit(0);
   }
@@ -114,4 +113,7 @@ async function main() {
   });
 }
 
-main().catch(console.error);
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

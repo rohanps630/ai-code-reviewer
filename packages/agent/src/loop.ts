@@ -66,19 +66,17 @@ const DEFAULT_MAX_TOKENS = 4096;
 // Dep contracts
 // ────────────────────────────────────────────────────────────────────
 
+import type { CodeSource } from "./tools/index.js";
+
 export interface RetrieverLike {
   search: (query: string, options?: { repoId?: string; limit?: number }) => Promise<SearchResult[]>;
-}
-
-export interface SqlExecutorLike {
-  execute: (query: unknown) => Promise<unknown>;
 }
 
 export type RunReviewDeps = {
   /** Any ModelProvider — Anthropic, Groq, OpenAI, Google, or custom. */
   provider: ModelProvider;
   retriever: RetrieverLike;
-  executor: SqlExecutorLike;
+  codeSource: CodeSource;
   /** Optional E2B-style sandbox factory for the run_tests tool.
    *  When omitted, run_tests is simply not registered. */
   sandboxFactory?: RunTestsSandboxFactory;
@@ -223,8 +221,8 @@ async function* runReviewWithDeps(
   // name/description/schema/validators/execute, so the cast is safe.
   const tools: AgentTool[] = [
     createSearchCodeTool(deps.retriever) as unknown as AgentTool,
-    createReadFileTool(deps.executor) as unknown as AgentTool,
-    createFindReferencesTool(deps.executor) as unknown as AgentTool,
+    createReadFileTool(deps.codeSource) as unknown as AgentTool,
+    createFindReferencesTool(deps.codeSource) as unknown as AgentTool,
   ];
   if (deps.sandboxFactory) {
     tools.push(createRunTestsTool(deps.sandboxFactory) as unknown as AgentTool);
@@ -411,33 +409,35 @@ const cachedDeps = new Map<string, RunReviewDeps>();
 // reused across all tiers so we only clone/embed/connect once per
 // process lifetime.
 let sharedRetriever: RetrieverLike | null = null;
-let sharedExecutor: SqlExecutorLike | null = null;
+let sharedCodeSource: CodeSource | null = null;
 let sharedSandboxFactory: RunTestsSandboxFactory | undefined;
 let sharedResourcesLoaded = false;
 
 async function ensureSharedResources(): Promise<{
   retriever: RetrieverLike;
-  executor: SqlExecutorLike;
+  codeSource: CodeSource;
   sandboxFactory: RunTestsSandboxFactory | undefined;
 }> {
-  if (sharedResourcesLoaded && sharedRetriever && sharedExecutor) {
+  if (sharedResourcesLoaded && sharedRetriever && sharedCodeSource) {
     return {
       retriever: sharedRetriever,
-      executor: sharedExecutor,
+      codeSource: sharedCodeSource,
       sandboxFactory: sharedSandboxFactory,
     };
   }
 
-  const [{ serverEnv }, { db }] = await Promise.all([
+  const [{ serverEnv }, { db }, { PostgresCodeSource }] = await Promise.all([
     import("@acr/shared/env"),
     import("@acr/db/client"),
+    import("./tools/index.js"),
   ]).catch((err: unknown) => {
     throw new Error(
       `Failed to load required modules in defaultDeps: ${err instanceof Error ? err.message : String(err)}`,
     );
   });
 
-  sharedExecutor = db as unknown as SqlExecutorLike;
+  // biome-ignore lint/suspicious/noExplicitAny: passing db client
+  sharedCodeSource = new PostgresCodeSource(db as any);
 
   if (serverEnv.VOYAGE_API_KEY) {
     const { VoyageClient, CohereReranker } = await import("./retrieval/index.js");
@@ -447,7 +447,7 @@ async function ensureSharedResources(): Promise<{
       : undefined;
     sharedRetriever = new HybridRetriever({
       embedder,
-      executor: db as unknown as SqlExecutorLike,
+      executor: db as unknown as { execute: (query: unknown) => Promise<unknown> },
       reranker,
     });
   } else {
@@ -466,7 +466,7 @@ async function ensureSharedResources(): Promise<{
   sharedResourcesLoaded = true;
   return {
     retriever: sharedRetriever,
-    executor: sharedExecutor,
+    codeSource: sharedCodeSource,
     sandboxFactory: sharedSandboxFactory,
   };
 }
@@ -507,7 +507,7 @@ async function defaultDeps(tier: string): Promise<RunReviewDeps> {
   const deps: RunReviewDeps = {
     provider,
     retriever: shared.retriever,
-    executor: shared.executor,
+    codeSource: shared.codeSource,
     sandboxFactory: shared.sandboxFactory,
   };
   cachedDeps.set(tier, deps);
@@ -518,7 +518,7 @@ async function defaultDeps(tier: string): Promise<RunReviewDeps> {
 export function _resetForTests(): void {
   cachedDeps.clear();
   sharedRetriever = null;
-  sharedExecutor = null;
+  sharedCodeSource = null;
   sharedSandboxFactory = undefined;
   sharedResourcesLoaded = false;
 }

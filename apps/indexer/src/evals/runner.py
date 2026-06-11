@@ -20,12 +20,11 @@ when individual examples blow up — the failure shows up in
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from evals.bridge import AgentBridge, BridgeError
 from evals.judge import (
     DEFAULT_JUDGE_MODEL,
     AnthropicClient,
@@ -38,26 +37,6 @@ from evals.schema import EvalExample
 from evals.scorers.findings import MatchResult, match_findings
 from evals.scorers.types import PredictedReview
 from evals.summary import ExampleResult
-
-
-@dataclass(frozen=True)
-class BridgeResult:
-    """What the agent bridge hands back per example."""
-
-    review: PredictedReview
-    latency_ms: int
-    cost_usd: float
-
-
-class AgentBridge(Protocol):
-    """Callable interface for invoking the TS agent.
-
-    The Python runner doesn't care whether this is a subprocess.run on
-    a Node CLI (4.6), an in-process fake (tests), or eventually a
-    direct API call.
-    """
-
-    def __call__(self, example: EvalExample) -> BridgeResult: ...
 
 
 class _MatchTrace(BaseModel):
@@ -165,7 +144,41 @@ def run_eval(
         if on_example_start is not None:
             on_example_start(example)
 
-        bridge_result = bridge(example)
+        try:
+            bridge_result = bridge(example)
+        except BridgeError as exc:
+            bridge_error = str(exc)
+            result = ExampleResult(
+                example_id=example.id,
+                difficulty=example.difficulty,
+                match=MatchResult(),
+                judge_score=None,
+                judge_rationale=None,
+                judge_error=bridge_error,
+                latency_ms=0,
+                review_cost_usd=0.0,
+                judge_cost_usd=0.0,
+            )
+            results.append(result)
+
+            if output_dir is not None:
+                trace = ExampleTrace(
+                    example_id=example.id,
+                    difficulty=example.difficulty,
+                    bridge=_BridgeTrace(
+                        review=PredictedReview(summary="", findings=()),
+                        latency_ms=0,
+                        cost_usd=0.0,
+                    ),
+                    judge=None,
+                    judge_error=bridge_error,
+                    match=_match_to_trace(MatchResult()),
+                )
+                _write_trace(output_dir, trace)
+
+            if on_example_done is not None:
+                on_example_done(example, result)
+            continue
 
         match = match_findings(list(bridge_result.review.findings), example.ground_truth)
 

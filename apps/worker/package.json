@@ -1,0 +1,25 @@
+{
+  "name": "@acr/worker",
+  "version": "0.0.1",
+  "private": true,
+  "description": "AI Code Reviewer Async Worker",
+  "type": "module",
+  "scripts": {
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc --build",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo",
+    "typecheck": "tsc --build"
+  },
+  "dependencies": {
+    "@acr/agent": "workspace:*",
+    "@acr/db": "workspace:*",
+    "@acr/shared": "workspace:*",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

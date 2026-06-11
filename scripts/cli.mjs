@@ -286,6 +286,10 @@ const tree = {
           { label: "Format (Biome)", run: { cmd: "pnpm", args: ["format"] } },
           { label: "Typecheck", run: { cmd: "pnpm", args: ["typecheck"] } },
           {
+            label: "Validate Architecture (components.json)",
+            run: { cmd: "node", args: ["scripts/validate-architecture.mjs"] },
+          },
+          {
             label: "Ruff check (Python)",
             run: { cmd: "uv", args: ["run", "ruff", "check", "."], cwd: INDEXER_DIR },
           },

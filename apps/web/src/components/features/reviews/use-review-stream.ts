@@ -50,47 +50,61 @@ export function useReviewStream() {
         return;
       }
 
-      const reviewId = res.headers.get("X-Review-Id");
-      if (reviewId) setState((s) => ({ ...s, reviewId }));
-
-      if (!res.ok || !res.body) {
+      if (!res.ok) {
         const message = await res.text().catch(() => res.statusText);
         setState((s) => ({ ...s, status: "failed", error: message || "Request failed" }));
         return;
       }
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      try {
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-          for (const line of lines) {
-            if (line.length === 0) continue;
-            let chunk: ReviewChunk;
-            try {
-              chunk = JSON.parse(line) as ReviewChunk;
-            } catch {
-              continue;
-            }
-            setState((s) => applyChunk(s, chunk));
-          }
-        }
-      } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setState((s) => ({
-          ...s,
-          status: "failed",
-          error: err instanceof Error ? err.message : "Stream read failed",
-        }));
+      const { reviewId, status } = await res.json();
+      if (!reviewId) {
+        setState((s) => ({ ...s, status: "failed", error: "No reviewId returned" }));
         return;
       }
-      // Only flip to "completed" if an error chunk hasn't already set "failed"
-      setState((s) => (s.status === "streaming" ? { ...s, status: "completed" } : s));
+
+      setState((s) => ({
+        ...s,
+        reviewId,
+        status: status === "completed" ? "completed" : "streaming",
+      }));
+
+      // Now stream via SSE
+      const eventSource = new EventSource(`/api/reviews/${reviewId}/stream`);
+
+      // Store event source in abort ref to close it on abort
+      abortRef.current = {
+        abort: () => {
+          eventSource.close();
+          controller.abort();
+        },
+      } as unknown as AbortController;
+
+      eventSource.onmessage = (event) => {
+        try {
+          const chunk = JSON.parse(event.data) as ReviewChunk;
+          setState((s) => applyChunk(s, chunk));
+
+          if (chunk.type === "final" || chunk.type === "error") {
+            eventSource.close();
+            setState((s) =>
+              s.status === "streaming"
+                ? { ...s, status: chunk.type === "final" ? "completed" : "failed" }
+                : s,
+            );
+          }
+        } catch {
+          // Ignore invalid chunks
+        }
+      };
+
+      eventSource.onerror = () => {
+        eventSource.close();
+        setState((s) => ({
+          ...s,
+          status: s.status === "streaming" ? "failed" : s.status,
+          error: "Stream connection lost",
+        }));
+      };
     },
     [],
   );
