@@ -25,7 +25,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from evals.bridge import BridgeError, BridgeResult, SubprocessBridge
+from evals.bridge import AgentBridge, BridgeError, BridgeResult, SubprocessBridge
 from evals.judge import DEFAULT_JUDGE_MODEL as _ANTHROPIC_JUDGE_MODEL
 from evals.judge_groq import DEFAULT_GROQ_JUDGE_MODEL as _GROQ_JUDGE_MODEL
 from evals.judge_groq import DEFAULT_OLLAMA_JUDGE_MODEL as _OLLAMA_JUDGE_MODEL
@@ -87,7 +87,7 @@ class _ResilientBridge:
         CLI's stdout stays clean for piping the summary
     """
 
-    def __init__(self, inner: SubprocessBridge) -> None:
+    def __init__(self, inner: AgentBridge) -> None:
         self._inner = inner
 
     def __call__(self, example: EvalExample) -> BridgeResult:
