@@ -29,7 +29,7 @@ class PredictedFinding(BaseModel):
     category: Category
     severity: Severity
     summary: str = Field(min_length=1)
-    location_hint: str | None = Field(default=None, alias="locationHint")
+    location_hint: str | None = Field(default=None, validation_alias="locationHint")
     suggestion: str | None = None
 
 
