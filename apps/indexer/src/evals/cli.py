@@ -25,11 +25,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from evals.bridge import BridgeError, SubprocessBridge
+from evals.bridge import BridgeError, BridgeResult, SubprocessBridge
 from evals.judge import DEFAULT_JUDGE_MODEL as _ANTHROPIC_JUDGE_MODEL
 from evals.judge_groq import DEFAULT_GROQ_JUDGE_MODEL as _GROQ_JUDGE_MODEL
 from evals.judge_groq import DEFAULT_OLLAMA_JUDGE_MODEL as _OLLAMA_JUDGE_MODEL
-from evals.runner import BridgeResult, run_eval
+from evals.runner import run_eval
 from evals.schema import EvalExample, load_examples_jsonl
 from evals.scorers.types import PredictedReview
 from evals.summary import (

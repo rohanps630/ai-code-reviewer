@@ -105,7 +105,10 @@ function emptyDeps(provider: ModelProvider): RunReviewDeps {
   return {
     provider,
     retriever: { search: vi.fn(async () => []) },
-    executor: { execute: vi.fn(async () => []) },
+    codeSource: {
+      readFile: vi.fn(async () => ({ found: false })),
+      findReferences: vi.fn(async () => []),
+    } as unknown as CodeSource,
   };
 }
 
@@ -182,7 +185,7 @@ describe("runReview — multi-iteration with tool calls", () => {
     const deps: RunReviewDeps = {
       provider,
       retriever: { search },
-      executor: { execute: vi.fn() },
+      codeSource: { readFile: vi.fn(), findReferences: vi.fn() } as unknown as CodeSource,
     };
 
     const chunks = await collect(runReview(BASIC_INPUT, deps));
@@ -202,7 +205,6 @@ describe("runReview — multi-iteration with tool calls", () => {
 
   it("runs multiple tool calls in parallel within one iteration", async () => {
     const search = vi.fn(async () => []);
-    const execute = vi.fn(async () => []);
 
     const provider = mockProvider([
       {
@@ -218,7 +220,7 @@ describe("runReview — multi-iteration with tool calls", () => {
     const deps: RunReviewDeps = {
       provider,
       retriever: { search },
-      executor: { execute },
+      codeSource: { readFile: vi.fn(), findReferences: vi.fn() } as unknown as CodeSource,
     };
 
     await collect(runReview(BASIC_INPUT, deps));
@@ -226,7 +228,10 @@ describe("runReview — multi-iteration with tool calls", () => {
   });
 
   it("surfaces tool errors back as ok:false (model can self-correct next turn)", async () => {
-    const executor = { execute: vi.fn(async () => []) };
+    const executor = {
+      readFile: vi.fn(async () => ({ found: false })),
+      findReferences: vi.fn(async () => []),
+    } as unknown as CodeSource;
     const provider = mockProvider([
       { text: "", toolCalls: [toolUseBlock("read_file", { path: "missing.ts" })] },
       { text: "", toolCalls: [submitBlock(BASIC_REVIEW)] },
@@ -234,7 +239,7 @@ describe("runReview — multi-iteration with tool calls", () => {
     const deps: RunReviewDeps = {
       provider,
       retriever: { search: vi.fn() },
-      executor,
+      codeSource: executor,
     };
     const chunks = await collect(runReview(BASIC_INPUT, deps));
     const tr = chunks.find((c) => c.type === "tool_result");
@@ -258,7 +263,7 @@ describe("runReview — termination", () => {
     const deps: RunReviewDeps = {
       provider,
       retriever: { search: vi.fn(async () => []) },
-      executor: { execute: vi.fn() },
+      codeSource: { readFile: vi.fn(), findReferences: vi.fn() } as unknown as CodeSource,
       maxIterations: 3,
     };
     await expect(collect(runReview(BASIC_INPUT, deps))).rejects.toThrow(/MAX_ITERATIONS reached/);
@@ -275,7 +280,7 @@ describe("runReview — termination", () => {
     const deps: RunReviewDeps = {
       provider,
       retriever: { search: vi.fn(async () => []) },
-      executor: { execute: vi.fn() },
+      codeSource: { readFile: vi.fn(), findReferences: vi.fn() } as unknown as CodeSource,
       costCapUsd: 1.0,
     };
     await expect(collect(runReview(BASIC_INPUT, deps))).rejects.toThrow(/Cost cap exceeded/);
@@ -286,7 +291,7 @@ describe("runReview — termination", () => {
     const deps: RunReviewDeps = {
       provider,
       retriever: { search: vi.fn() },
-      executor: { execute: vi.fn() },
+      codeSource: { readFile: vi.fn(), findReferences: vi.fn() } as unknown as CodeSource,
     };
     await expect(collect(runReview(BASIC_INPUT, deps))).rejects.toThrow(
       /without calling submit_review/i,

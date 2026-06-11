@@ -24,9 +24,8 @@ from typing import Any
 
 import pytest
 
-from evals.bridge import BridgeError
+from evals.bridge import BridgeError, BridgeResult
 from evals.cli import _ResilientBridge, build_parser, run
-from evals.runner import BridgeResult
 from evals.schema import EvalExample, GroundTruth, GroundTruthFinding
 from evals.scorers.types import PredictedFinding, PredictedReview
 

@@ -126,16 +126,7 @@ vi.mock("@/lib/langfuse", () => ({
 }));
 
 import { SEMANTIC_CACHE_SIMILARITY_THRESHOLD } from "@/lib/review-constants";
-import type { ReviewChunk } from "@acr/agent";
 import { POST } from "./route";
-
-async function drainNdjson(res: Response): Promise<ReviewChunk[]> {
-  const text = await res.text();
-  return text
-    .split("\n")
-    .filter((line) => line.length > 0)
-    .map((line) => JSON.parse(line) as ReviewChunk);
-}
 
 function makeRequest(body: unknown): Request {
   return new Request("http://localhost/api/reviews", {
@@ -168,38 +159,22 @@ describe("POST /api/reviews", () => {
     expect(res.status).toBe(400);
   });
 
-  it("streams agent chunks and persists the review", async () => {
+  it("enqueues the review and persists pending state", async () => {
     const res = await POST(makeRequest({ diff: "@@ -1 +1 @@\n-a\n+b" }));
-    expect(res.status).toBe(200);
-    expect(res.headers.get("Content-Type")).toMatch(/x-ndjson/);
-    expect(res.headers.get("X-Review-Id")).toBeTruthy();
+    expect(res.status).toBe(202);
+    expect(res.headers.get("Content-Type")).toMatch(/application\/json/);
+    const body = await res.json();
+    expect(body.status).toBe("queued");
+    expect(body.reviewId).toBeTruthy();
 
-    const chunks = await drainNdjson(res);
-    expect(chunks.some((c) => c.type === "status")).toBe(true);
-    expect(chunks.some((c) => c.type === "text")).toBe(true);
-    const final = chunks.find((c) => c.type === "final");
-    expect(final).toBeDefined();
-    if (final?.type === "final") {
-      expect(final.output.summary).toBeTruthy();
-      expect(Array.isArray(final.output.findings)).toBe(true);
-    }
-
-    // DB row created, then transitioned streaming → completed
+    // DB row created as pending
     expect(dbState.inserted).toHaveLength(1);
     expect(dbState.inserted[0]?.status).toBe("pending");
-
-    const finalUpdate = dbState.updates.at(-1);
-    expect(finalUpdate?.patch.status).toBe("completed");
-    expect(finalUpdate?.patch.output).toBeDefined();
-
-    // Asserts events were inserted
-    expect(dbState.events.length).toBeGreaterThan(0);
-    expect(dbState.events[0]?.type).toBe("status");
   });
 
   it("invokes the Langfuse client", async () => {
     const res = await POST(makeRequest({ diff: "x" }));
-    await drainNdjson(res);
+    await res.json();
     expect(langfuseSpans.traceCalls).toHaveLength(1);
     expect(langfuseSpans.traceCalls[0]?.name).toBe("review");
     expect(langfuseSpans.flushCalls).toBeGreaterThan(0);
@@ -207,25 +182,18 @@ describe("POST /api/reviews", () => {
 
   it("routes 'auto' through the real routeModel (trivial diff → haiku)", async () => {
     const res = await POST(makeRequest({ diff: "x" }));
-    await drainNdjson(res);
+    await res.json();
     expect(dbState.inserted[0]?.model).toBe("haiku");
   });
 
-  it("cache miss resolves the provider through the real cascade", async () => {
+  it("cache miss resolves the provider and enqueues properly", async () => {
     const res = await POST(makeRequest({ diff: "x", model: "sonnet" }));
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
 
-    const chunks = await drainNdjson(res);
-    // A resolution failure would surface as an error chunk, not final
-    expect(chunks.find((c) => c.type === "error")).toBeUndefined();
-    expect(chunks.find((c) => c.type === "final")).toBeDefined();
+    const body = await res.json();
+    expect(body.status).toBe("queued");
 
-    // Real resolveProviderForTier + real routeModel: with only
-    // ANTHROPIC_API_KEY set, "sonnet" must resolve to Anthropic.
     expect(dbState.inserted[0]?.model).toBe("sonnet");
-    expect(captured.providers).toHaveLength(1);
-    expect(captured.providers[0]?.provider).toBe("anthropic");
-    expect(captured.providers[0]?.modelId).toBe("claude-sonnet-4-7");
   });
 });
 

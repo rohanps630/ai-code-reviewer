@@ -13,9 +13,8 @@ from typing import Any
 
 import pytest
 
+from evals.bridge import AgentBridge, BridgeResult
 from evals.runner import (
-    AgentBridge,
-    BridgeResult,
     ExampleTrace,
     run_eval,
 )
