@@ -87,3 +87,5 @@ supabase/.temp/
 packages/db/src/migrations/meta/_journal.json.bak
 
 temp/
+# Personal NotebookLM study pack (local only)
+learning/
