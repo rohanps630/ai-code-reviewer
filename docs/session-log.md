@@ -837,3 +837,21 @@ Ship criteria met (per `docs/roadmap.md` Phase 5):
 - ✅ Model router picks haiku/sonnet/opus by PR signal and token limits.
 - ✅ Prompt-injection test suite passes (XML delimiters and escaping in code readers).
 
+---
+
+## Phase 7 Milestone 2 takeover — 2026-06-12
+
+**What we're building**: Prompt v0.4 to teach the reviewer to output code suggestions in the raw format, and verify it with the eval harness.
+
+**Protected paths (will not edit without explicit ask)**:
+- `packages/agent/src/loop.ts`
+- `packages/agent/src/retrieval/` (any file)
+- `packages/agent/src/tools/` (any file)
+- `packages/agent/src/prompts/versions/` (except `system-v0.4.ts` created for this task)
+
+### Task 7.2.1 — Prompt versioning & Suggestion instructions — done
+
+- Created `system-v0.4.ts` under `packages/agent/src/prompts/versions/` with explicit guidelines on providing raw code suggestions in the `suggestion` field without markdown backticks.
+- Re-exported the new prompt as the active prompt `SYSTEM_PROMPT_V04` and bumped version to `"v0.4"` in `packages/agent/src/prompts/index.ts`.
+- Logged the prompt change in `docs/prompts.md`.
+

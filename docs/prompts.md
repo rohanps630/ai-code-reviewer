@@ -21,6 +21,14 @@
 
 ## Change log
 
+### v0.4 — raw code suggestions (Phase 7 Milestone 2)
+
+- **Date**: 2026-06-12
+- **Author**: Antigravity
+- **Change**: Added explicit instructions for generating raw replacement code in the `suggestion` field of findings, without wrapping them in markdown code fences, matching the new GitHub-native delivery pipeline.
+- **Eval impact**: *Pending run*
+- **Verdict**: *Pending run*
+
 ### v0.3 — prompt injection defenses & XML tags (Phase 5)
 
 - **Date**: 2026-06-10

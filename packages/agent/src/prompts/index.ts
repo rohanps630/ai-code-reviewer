@@ -5,7 +5,7 @@
  * To bump the prompt: create a new version file, update the import below,
  * and log the change in docs/prompts.md with eval delta.
  */
-export { SYSTEM_PROMPT_V03 as CURRENT_SYSTEM_PROMPT } from "./versions/system-v0.3.js";
+export { SYSTEM_PROMPT_V04 as CURRENT_SYSTEM_PROMPT } from "./versions/system-v0.4.js";
 
 /** The currently active prompt version string. */
-export const CURRENT_PROMPT_VERSION = "v0.3";
+export const CURRENT_PROMPT_VERSION = "v0.4";
