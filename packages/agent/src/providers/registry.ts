@@ -42,7 +42,7 @@ export function resolveModel(model: ModelLike): ModelProvider {
   if (/^(gpt-|o[1-4])/.test(id)) return openai(id);
   if (/^gemini-/.test(id)) return google(id);
   if (/^(llama-|mixtral-|gemma-|whisper-)/.test(id)) return groq(id);
-  // Ollama model IDs use name:tag format (e.g. "qwen3.5:latest", "deepseek-r1:14b")
+  // Ollama model IDs use name:tag format (e.g. "qwen2.5:7b", "deepseek-r1:14b")
   if (id.includes(":") || /^(qwen|phi)/.test(id)) return ollama(id);
 
   throw new Error(

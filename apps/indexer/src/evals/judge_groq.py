@@ -102,7 +102,7 @@ class GroqJudgeAdapter:
 
 
 OLLAMA_BASE_URL = "http://localhost:11434/v1"
-DEFAULT_OLLAMA_JUDGE_MODEL = "qwen3.5:latest"
+DEFAULT_OLLAMA_JUDGE_MODEL = "qwen2.5:7b"
 
 
 class OllamaJudgeAdapter(GroqJudgeAdapter):

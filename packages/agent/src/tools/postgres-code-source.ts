@@ -53,7 +53,12 @@ export class PostgresCodeSource implements CodeSource {
 
   async findReferences(symbol: string, limit: number, repoId?: string): Promise<ReferenceResult[]> {
     const repoFilter = repoId ? sql`and c.repo_id = ${repoId}::uuid` : sql``;
-    const tsq = sql`to_tsquery('english', ${symbol})`;
+    // plainto_tsquery (not to_tsquery): symbols like `AuthService.login`,
+    // `router.get('/')`, or `foo && bar` contain tsquery operators that make
+    // to_tsquery raise a syntax error. plainto_tsquery treats the input as
+    // free text and ANDs the lexemes, which never throws on user symbols.
+    // Kept consistent with retrieval/bm25.ts.
+    const tsq = sql`plainto_tsquery('english', ${symbol})`;
 
     const rows = (await this.executor.execute(sql`
       select

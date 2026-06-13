@@ -10,7 +10,7 @@ from evals.pricing import anthropic_cost_usd, known_models
 def test_known_models_include_sonnet_and_opus() -> None:
     models = known_models()
     assert "claude-sonnet-4-5" in models
-    assert "claude-opus-4-7" in models
+    assert "claude-opus-4-8" in models
 
 
 def test_sonnet_cost_basic() -> None:

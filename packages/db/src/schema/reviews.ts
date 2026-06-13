@@ -1,5 +1,14 @@
 import { sql } from "drizzle-orm";
-import { integer, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  index,
+  integer,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 /**
  * `reviews` — one row per review request.
@@ -19,40 +28,61 @@ import { integer, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle
  * import { reviews } from "@acr/db";
  * const results = await db.select().from(reviews);
  */
-export const reviews = pgTable("reviews", {
-  id: uuid("id").primaryKey().defaultRandom(),
+export const reviews = pgTable(
+  "reviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
 
-  // Input
-  diff: text("diff").notNull(),
+    // Input
+    diff: text("diff").notNull(),
 
-  // Output (null until the review completes)
-  output: jsonb("output"),
+    // Output (null until the review completes)
+    output: jsonb("output"),
 
-  // Lifecycle
-  status: text("status")
-    .$type<"pending" | "streaming" | "completed" | "failed">()
-    .notNull()
-    .default("pending"),
+    // Ownership / tenancy seam. Nullable: null = anonymous (open mode). When a
+    // request authenticates, this holds an opaque, stable principal id. Adding
+    // it now — while the table is small — means the eventual move to real
+    // per-user auth is an additive change, not a backfill-onto-anonymous-rows
+    // decision. Indexed for "my reviews" / per-tenant queries.
+    owner_id: text("owner_id"),
 
-  // Model metadata
-  model: text("model").notNull(),
-  input_tokens: integer("input_tokens"),
-  output_tokens: integer("output_tokens"),
+    // Lifecycle
+    status: text("status")
+      .$type<"pending" | "streaming" | "completed" | "failed">()
+      .notNull()
+      .default("pending"),
 
-  // Cost — numeric, never float (coding-style.md)
-  cost_usd: numeric("cost_usd", { precision: 10, scale: 6 }),
+    // Model metadata
+    model: text("model").notNull(),
+    input_tokens: integer("input_tokens"),
+    output_tokens: integer("output_tokens"),
 
-  // Caching metadata (Phase 5)
-  cache_status: text("cache_status")
-    .$type<"exact" | "semantic" | "miss">()
-    .notNull()
-    .default("miss"),
-  prompt_cache_tokens: integer("prompt_cache_tokens").notNull().default(0),
+    // Cost — numeric, never float (coding-style.md)
+    cost_usd: numeric("cost_usd", { precision: 10, scale: 6 }),
 
-  // Timestamps — always timestamptz (coding-style.md)
-  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updated_at: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow()
-    .$onUpdate(() => sql`now()`),
-});
+    // Caching metadata (Phase 5)
+    cache_status: text("cache_status")
+      .$type<"exact" | "semantic" | "miss">()
+      .notNull()
+      .default("miss"),
+    prompt_cache_tokens: integer("prompt_cache_tokens").notNull().default(0),
+
+    // Timestamps — always timestamptz (coding-style.md)
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => sql`now()`),
+  },
+  // The reviews list page orders by `created_at desc` (paginated) and the
+  // worker poll selects the oldest `pending` row by `created_at asc`. Without
+  // an index both are sequential scans that degrade as the table grows. A
+  // b-tree on created_at serves both directions (Postgres scans it backward
+  // for desc).
+  (table) => [
+    index("reviews_created_at_idx").on(table.created_at),
+    // Supports per-owner listing once auth lands; partial-free b-tree is fine
+    // (nulls are excluded from "where owner_id = $1" scans).
+    index("reviews_owner_id_idx").on(table.owner_id),
+  ],
+);

@@ -25,9 +25,9 @@ export type Tier = "haiku" | "sonnet" | "opus";
  *  provider; defaultDeps() picks the right column from env. */
 export const MODEL_TIERS: Record<string, Record<Tier, string>> = {
   anthropic: {
-    haiku: "claude-haiku-4-5",
-    sonnet: "claude-sonnet-4-7",
-    opus: "claude-opus-4-7",
+    haiku: "claude-haiku-4-5-20251001",
+    sonnet: "claude-sonnet-4-6",
+    opus: "claude-opus-4-8",
   },
   groq: {
     haiku: "llama-3.1-8b-instant",
@@ -45,8 +45,8 @@ export const MODEL_TIERS: Record<string, Record<Tier, string>> = {
     opus: "gemini-2.5-pro",
   },
   ollama: {
-    haiku: "qwen3.5:latest",
-    sonnet: "gemma4:e4b",
+    haiku: "qwen2.5:7b",
+    sonnet: "qwen2.5:14b",
     opus: "deepseek-r1:14b",
   },
 } as const;
@@ -71,9 +71,9 @@ export function resolveModelId(providerName: string, tier: string): string {
 /** Per-million-token pricing (USD). Used only for the cost cap —
  *  Langfuse handles real cost accounting downstream. */
 export const PRICING_USD_PER_MTOK: Record<string, { input: number; output: number }> = {
-  "claude-haiku-4-5": { input: 1.0, output: 5.0 },
-  "claude-sonnet-4-7": { input: 3.0, output: 15.0 },
-  "claude-opus-4-7": { input: 15.0, output: 75.0 },
+  "claude-haiku-4-5-20251001": { input: 1.0, output: 5.0 },
+  "claude-sonnet-4-6": { input: 3.0, output: 15.0 },
+  "claude-opus-4-8": { input: 15.0, output: 75.0 },
   "llama-3.1-8b-instant": { input: 0.05, output: 0.08 },
   "llama-3.3-70b-versatile": { input: 0.59, output: 0.79 },
   "gpt-4o-mini": { input: 0.15, output: 0.6 },
@@ -81,9 +81,9 @@ export const PRICING_USD_PER_MTOK: Record<string, { input: number; output: numbe
   "gemini-2.5-flash": { input: 0.15, output: 0.6 },
   "gemini-2.5-pro": { input: 1.25, output: 10.0 },
   // Local inference — no marginal cost
-  "qwen3.5:latest": { input: 0, output: 0 },
+  "qwen2.5:7b": { input: 0, output: 0 },
+  "qwen2.5:14b": { input: 0, output: 0 },
   "deepseek-r1:14b": { input: 0, output: 0 },
-  "gemma4:e4b": { input: 0, output: 0 },
 };
 
 /** Pricing for a concrete model id, or `undefined` when unknown (caller
@@ -117,6 +117,26 @@ export type ProviderEnvKeys = {
  * this directly instead of going through `resolveModel` (which expects
  * model-ID strings).
  */
+/**
+ * Resolve a tier label to the **concrete model id** that the provider cascade
+ * would select for the given env — without constructing a provider. Used to
+ * key caches by the exact model id (so a tier repoint invalidates them) when
+ * the caller only needs the string, not a runnable provider.
+ *
+ * Mirrors {@link resolveProviderForTier}'s preference order exactly.
+ *
+ * @example
+ * resolveModelIdForEnv("sonnet", { ANTHROPIC_API_KEY: "..." }); // "claude-sonnet-4-6"
+ */
+export function resolveModelIdForEnv(tier: string, envKeys: ProviderEnvKeys): string {
+  const safeTier = isTier(tier) ? tier : "sonnet";
+  if (envKeys.ANTHROPIC_API_KEY) return resolveModelId("anthropic", safeTier);
+  if (envKeys.GROQ_API_KEY) return resolveModelId("groq", safeTier);
+  if (envKeys.OPENAI_API_KEY) return resolveModelId("openai", safeTier);
+  if (envKeys.GOOGLE_API_KEY) return resolveModelId("google", safeTier);
+  return resolveModelId("ollama", safeTier);
+}
+
 export async function resolveProviderForTier(
   tier: string,
   envKeys: ProviderEnvKeys,

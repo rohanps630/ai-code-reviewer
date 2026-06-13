@@ -111,7 +111,7 @@ export type ModelResponse = {
 export interface ModelProvider {
   /** Stable provider id, e.g. "anthropic" | "openai" | "google". */
   readonly provider: string;
-  /** Concrete model id passed to the provider, e.g. "claude-sonnet-4-7". */
+  /** Concrete model id passed to the provider, e.g. "claude-sonnet-4-6". */
   readonly modelId: string;
   /** Run one inference step. Must not mutate `request`. */
   generate(request: ModelRequest): Promise<ModelResponse>;

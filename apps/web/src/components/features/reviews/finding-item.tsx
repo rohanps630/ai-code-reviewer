@@ -57,6 +57,7 @@ function EvidenceSection({ evidence }: { evidence?: EvidenceItem[] }) {
       <button
         type="button"
         onClick={() => setOpen(!open)}
+        aria-expanded={open}
         className="flex w-full items-center justify-between p-3 text-left font-medium text-muted-foreground text-xs transition-colors hover:text-foreground"
       >
         <span className="flex items-center gap-1.5">

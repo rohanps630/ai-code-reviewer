@@ -39,6 +39,36 @@ function getLimiter(): Ratelimit | null {
 }
 
 /**
+ * Resolve the client IP used as the rate-limit key.
+ *
+ * `X-Forwarded-For` is client-controllable: anyone can send
+ * `X-Forwarded-For: 1.2.3.4` to ride someone else's bucket (or evade their
+ * own). A trusted reverse proxy *appends* the real peer IP to the right of
+ * the list, so with `TRUSTED_PROXY_HOP_COUNT = n` the trustworthy value is the
+ * n-th entry from the right — everything to its left is attacker-supplied and
+ * ignored. With `n = 0` we don't trust XFF at all.
+ *
+ * @example
+ * // hops=1, header "9.9.9.9, 203.0.113.7" → "203.0.113.7" (proxy-set)
+ * const ip = clientIpFromRequest(req);
+ */
+export function clientIpFromRequest(req: Request): string {
+  const hops = serverEnv.TRUSTED_PROXY_HOP_COUNT;
+  const forwarded = req.headers.get("x-forwarded-for");
+
+  if (hops > 0 && forwarded) {
+    const chain = forwarded
+      .split(",")
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0);
+    const ip = chain[chain.length - hops];
+    if (ip) return ip;
+  }
+
+  return req.headers.get("x-real-ip")?.trim() ?? "anonymous";
+}
+
+/**
  * Applies sliding-window rate limiting based on the requester's IP address.
  *
  * @param req - The incoming request object.
@@ -56,9 +86,5 @@ export async function applyRateLimit(
     return { success: true, limit: 10, remaining: 10, reset: 0 };
   }
 
-  const forwarded = req.headers.get("x-forwarded-for");
-  const realIp = req.headers.get("x-real-ip");
-  const ip = forwarded?.split(",")[0]?.trim() ?? realIp ?? "anonymous";
-
-  return limiter.limit(ip);
+  return limiter.limit(clientIpFromRequest(req));
 }

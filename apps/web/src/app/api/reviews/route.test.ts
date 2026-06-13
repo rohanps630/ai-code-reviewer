@@ -48,6 +48,10 @@ vi.mock("@acr/db", () => ({
   eq: (_col: unknown, id: string) => ({ id }),
 }));
 
+// `after()` schedules post-response work; in a unit test there's no request
+// scope to drain it, so we run the callback inline. The flush still happens.
+vi.mock("next/server", () => ({ after: (cb: () => unknown) => void cb() }));
+
 // Capture the deps the route hands to runReview so tests can assert on
 // the provider that the REAL resolution path produced.
 const captured = vi.hoisted(() => ({

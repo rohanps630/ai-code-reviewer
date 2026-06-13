@@ -62,6 +62,33 @@ const MAX_ITERATIONS = 10;
 const COST_CAP_USD = 0.5;
 const DEFAULT_MAX_TOKENS = 4096;
 
+// Cost-cap budgeting. A single flat cap ($0.50) is calibrated for cheap tiers
+// and silently strangles expensive ones — three Opus iterations alone blow
+// past $0.50, so an Opus review (the tier the product deliberately selected
+// for a hard change) could never finish. Instead we derive the cap from the
+// model's own price so every tier can complete its loop. The cap is a runaway
+// guardrail, not a spend target; callers/evals can still pin `costCapUsd`.
+const COST_CAP_INPUT_TOKEN_BUDGET = MAX_ITERATIONS * 20_000; // growing context
+const COST_CAP_OUTPUT_TOKEN_BUDGET = MAX_ITERATIONS * DEFAULT_MAX_TOKENS;
+const COST_CAP_SAFETY_MARGIN = 1.2;
+
+/**
+ * Per-model default spend cap (USD), sized so a full {@link MAX_ITERATIONS}
+ * loop on that model completes without tripping the cap. Unknown models (no
+ * pricing) fall back to the flat {@link COST_CAP_USD}; free local models
+ * floor at it too.
+ *
+ * @example
+ * const cap = defaultCostCapUsd("claude-opus-4-8"); // ~$7, not $0.50
+ */
+export function defaultCostCapUsd(modelId: string): number {
+  const pricing = getModelPricing(modelId);
+  if (!pricing) return COST_CAP_USD;
+  const inputCost = (COST_CAP_INPUT_TOKEN_BUDGET / 1_000_000) * pricing.input;
+  const outputCost = (COST_CAP_OUTPUT_TOKEN_BUDGET / 1_000_000) * pricing.output;
+  return Math.max(COST_CAP_USD, (inputCost + outputCost) * COST_CAP_SAFETY_MARGIN);
+}
+
 // ────────────────────────────────────────────────────────────────────
 // Dep contracts
 // ────────────────────────────────────────────────────────────────────
@@ -146,11 +173,21 @@ const SUBMIT_REVIEW_DESCRIPTION =
  */
 export function routeModel(diff: string): "haiku" | "sonnet" | "opus" {
   const lines = diff.split("\n");
-  const totalLines = lines.length;
 
   // Count changed files
   const fileHeaders = lines.filter((line) => line.startsWith("diff --git "));
   const filesChanged = fileHeaders.length || 1;
+
+  // Size the change by *edited* lines, not total diff length. Total length
+  // counts unchanged context (the 3 lines around each hunk) plus `diff --git`,
+  // `index`, `@@`, and `+++`/`---` header noise — so a 15-line edit with
+  // context reads as 60+ lines and a large file with a tiny hunk misroutes.
+  // We count only added/removed content lines.
+  let changedLines = 0;
+  for (const line of lines) {
+    if (line.startsWith("+++") || line.startsWith("---")) continue; // file headers
+    if (line.startsWith("+") || line.startsWith("-")) changedLines++;
+  }
 
   // Check for public API surface changes
   let hasApiSurfaceChange = false;
@@ -167,13 +204,13 @@ export function routeModel(diff: string): "haiku" | "sonnet" | "opus" {
     }
   }
 
-  // Trivial: < 50 lines, 1 file, no API surface changes
-  if (totalLines < 50 && filesChanged === 1 && !hasApiSurfaceChange) {
+  // Trivial: < 25 changed lines, 1 file, no API surface changes
+  if (changedLines < 25 && filesChanged === 1 && !hasApiSurfaceChange) {
     return "haiku";
   }
 
-  // Complex: > 500 lines or > 5 files changed
-  if (totalLines > 500 || filesChanged > 5) {
+  // Complex: > 250 changed lines or > 5 files changed
+  if (changedLines > 250 || filesChanged > 5) {
     return "opus";
   }
 
@@ -214,7 +251,7 @@ async function* runReviewWithDeps(
   deps: RunReviewDeps,
 ): AsyncGenerator<ReviewChunk, void, void> {
   const maxIter = deps.maxIterations ?? MAX_ITERATIONS;
-  const costCap = deps.costCapUsd ?? COST_CAP_USD;
+  const costCap = deps.costCapUsd ?? defaultCostCapUsd(deps.provider.modelId);
 
   // The review tool set. Tool<SpecificIn, SpecificOut> is the covariant
   // source of the public AgentTool shape; the Agent's registry only reads

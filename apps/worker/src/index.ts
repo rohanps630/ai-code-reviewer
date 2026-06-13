@@ -8,11 +8,115 @@ import {
   runReview,
 } from "@acr/agent";
 import type { HybridRetrieverDeps, ReviewChunk, ReviewOutput } from "@acr/agent";
-import { agentEvents, eq, reviews, sql } from "@acr/db";
+import { agentEvents, eq, reviews, semanticCache, sql } from "@acr/db";
 import { db } from "@acr/db/client";
+import {
+  EXACT_CACHE_TTL_SECONDS,
+  SEMANTIC_CACHE_TTL_MS,
+  exactCacheKey,
+  summarizeDiffForEmbedding,
+} from "@acr/shared/cache";
 import { serverEnv } from "@acr/shared/env";
+import { redis } from "@acr/shared/redis";
 
 const EVENT_FLUSH_BATCH = 8;
+
+type RetrieverLike = { search: HybridRetriever["search"] };
+
+type WorkerResources = {
+  retriever: RetrieverLike;
+  codeSource: PostgresCodeSource;
+  sandboxFactory: Awaited<ReturnType<typeof defaultE2BFactory>> | undefined;
+  /** Embedder for cache population; null when VOYAGE_API_KEY is unset. */
+  embedder: VoyageClient | null;
+};
+
+// Heavy, stateless clients (embedder, reranker, retriever, code source,
+// sandbox factory) are built once and reused across every review. Building
+// them per-review (the previous behavior) re-instantiated the Voyage/Cohere
+// SDK HTTP clients on every job — wasted setup and no connection reuse. The
+// agent loop already shares these via its own singletons; the worker now does
+// the same.
+let cachedResources: WorkerResources | null = null;
+
+async function ensureWorkerResources(): Promise<WorkerResources> {
+  if (cachedResources) return cachedResources;
+
+  const reranker = serverEnv.COHERE_API_KEY
+    ? new CohereReranker({ apiKey: serverEnv.COHERE_API_KEY })
+    : undefined;
+
+  let retriever: RetrieverLike;
+  let embedder: VoyageClient | null = null;
+  if (serverEnv.VOYAGE_API_KEY) {
+    embedder = new VoyageClient({
+      apiKey: serverEnv.VOYAGE_API_KEY,
+      expectedDimensions: 1024,
+    });
+    retriever = new HybridRetriever({
+      embedder,
+      executor: db as unknown as HybridRetrieverDeps["executor"],
+      reranker,
+    });
+  } else {
+    // No embedder key — degrade to empty retrieval rather than constructing a
+    // VoyageClient with a blank key that fails at query time.
+    console.warn("[worker] VOYAGE_API_KEY not set — retrieval disabled (searches return empty).");
+    retriever = { search: async () => [] };
+  }
+
+  const sandboxFactory = serverEnv.E2B_API_KEY
+    ? await defaultE2BFactory(serverEnv.E2B_API_KEY)
+    : undefined;
+
+  cachedResources = {
+    retriever,
+    // biome-ignore lint/suspicious/noExplicitAny: passing db client
+    codeSource: new PostgresCodeSource(db as any),
+    sandboxFactory,
+    embedder,
+  };
+  return cachedResources;
+}
+
+/**
+ * Populate the exact (Redis) and semantic (pgvector) caches after a successful
+ * review. This is where caching is actually written — the review API only
+ * reads. Best-effort: a cache failure is logged and swallowed, never failing
+ * the review. Keyed by the concrete model id (ARCH-4); the semantic vector is
+ * built from a stable diff summary (ARCH-6), and the summary (not the raw,
+ * possibly-sensitive diff) is what we store alongside it.
+ */
+async function populateCaches(opts: {
+  diff: string;
+  modelId: string;
+  output: ReviewOutput;
+  embedder: VoyageClient | null;
+}): Promise<void> {
+  const responseStr = JSON.stringify(opts.output);
+
+  await redis
+    .set(exactCacheKey(opts.modelId, opts.diff), responseStr, EXACT_CACHE_TTL_SECONDS)
+    .catch((err: unknown) => {
+      console.error("[worker] Exact cache write failed:", err);
+      return false;
+    });
+
+  if (!opts.embedder) return;
+  try {
+    const summary = summarizeDiffForEmbedding(opts.diff);
+    const embedding = await opts.embedder.embedQuery(summary);
+    await db.insert(semanticCache).values({
+      diff: summary,
+      model: opts.modelId,
+      response: responseStr,
+      embedding,
+      expires_at: new Date(Date.now() + SEMANTIC_CACHE_TTL_MS),
+    });
+  } catch (err) {
+    console.error("[worker] Semantic cache write failed:", err);
+  }
+}
 
 async function processReview(reviewId: string, diff: string, selectedModel: string) {
   // biome-ignore lint/suspicious/noConsole: worker logging
@@ -37,7 +141,6 @@ async function processReview(reviewId: string, diff: string, selectedModel: stri
         })),
       );
     } catch (err) {
-      // biome-ignore lint/suspicious/noConsole: worker logging
       console.error("[worker] Failed to persist agent events:", err);
     }
   };
@@ -52,29 +155,12 @@ async function processReview(reviewId: string, diff: string, selectedModel: stri
 
   try {
     const provider = await resolveProviderForTier(selectedModel, serverEnv);
-
-    const embedder = new VoyageClient({
-      apiKey: serverEnv.VOYAGE_API_KEY ?? "",
-      expectedDimensions: 1024,
-    });
-    const reranker = serverEnv.COHERE_API_KEY
-      ? new CohereReranker({ apiKey: serverEnv.COHERE_API_KEY })
-      : undefined;
-    const retriever = new HybridRetriever({
-      embedder,
-      executor: db as unknown as HybridRetrieverDeps["executor"],
-      reranker,
-    });
-
-    const sandboxFactory = serverEnv.E2B_API_KEY
-      ? await defaultE2BFactory(serverEnv.E2B_API_KEY)
-      : undefined;
+    const { retriever, codeSource, sandboxFactory, embedder } = await ensureWorkerResources();
 
     const deps = {
       provider,
       retriever,
-      // biome-ignore lint/suspicious/noExplicitAny: passing db client
-      codeSource: new PostgresCodeSource(db as any),
+      codeSource,
       sandboxFactory,
       // We could add langfuseHooksAdapter here if we want tracing in the worker.
       // For now, we skip tracing in the worker to keep it standalone, or we can copy it later.
@@ -109,10 +195,16 @@ async function processReview(reviewId: string, diff: string, selectedModel: stri
       })
       .where(eq(reviews.id, reviewId));
 
+    // Populate caches so the next identical/similar review is a hit. Keyed by
+    // the concrete model id the review ran on. Best-effort — never blocks or
+    // fails the completed review.
+    if (final) {
+      await populateCaches({ diff, modelId: provider.modelId, output: final, embedder });
+    }
+
     // biome-ignore lint/suspicious/noConsole: worker logging
     console.log(`[worker] Completed review ${reviewId}`);
   } catch (err) {
-    // biome-ignore lint/suspicious/noConsole: worker logging
     console.error(`[worker] Failed review ${reviewId}:`, err);
     await db
       .update(reviews)
@@ -151,7 +243,6 @@ async function poll() {
       return;
     }
   } catch (err) {
-    // biome-ignore lint/suspicious/noConsole: worker logging
     console.error("[worker] Poll error:", err);
   }
 

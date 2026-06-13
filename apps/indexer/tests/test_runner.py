@@ -267,7 +267,7 @@ class TestRunEval:
             examples=examples,
             bridge=bridge,
             judge_client=client,
-            judge_model="claude-opus-4-7",
+            judge_model="claude-opus-4-8",
         )
 
-        assert client.messages.calls[0]["model"] == "claude-opus-4-7"
+        assert client.messages.calls[0]["model"] == "claude-opus-4-8"

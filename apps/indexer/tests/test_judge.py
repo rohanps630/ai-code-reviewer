@@ -193,13 +193,13 @@ class TestJudgeRequestShape:
             client,
             example=_example(),
             prediction=_prediction(),
-            model="claude-opus-4-7",
+            model="claude-opus-4-8",
             max_tokens=2048,
         )
         call = client.messages.calls[0]
-        assert call["model"] == "claude-opus-4-7"
+        assert call["model"] == "claude-opus-4-8"
         assert call["max_tokens"] == 2048
-        assert result.model == "claude-opus-4-7"
+        assert result.model == "claude-opus-4-8"
 
 
 class TestJudgeErrorPaths:

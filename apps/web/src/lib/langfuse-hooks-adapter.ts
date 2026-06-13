@@ -18,6 +18,30 @@
 
 import type { AgentHooks } from "@acr/agent";
 
+/** Per-string cap for trace payloads. The opening message carries the full
+ *  diff (up to 500 KB) and tool results can be whole files; logging them
+ *  verbatim ships hundreds of KB per generation to Langfuse and double-stores
+ *  potentially sensitive code. We cap each string and note what was dropped. */
+const MAX_TRACE_STRING_LEN = 2_000;
+const MAX_TRACE_DEPTH = 6;
+
+/**
+ * Recursively truncate long strings in a trace payload while preserving its
+ * structure. Bounded in depth so a pathological object can't blow the stack.
+ */
+function truncateForTrace(value: unknown, depth = 0): unknown {
+  if (typeof value === "string") {
+    if (value.length <= MAX_TRACE_STRING_LEN) return value;
+    const dropped = value.length - MAX_TRACE_STRING_LEN;
+    return `${value.slice(0, MAX_TRACE_STRING_LEN)}…(${dropped} more chars truncated)`;
+  }
+  if (depth >= MAX_TRACE_DEPTH || value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map((v) => truncateForTrace(v, depth + 1));
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value)) out[k] = truncateForTrace(v, depth + 1);
+  return out;
+}
+
 /** Minimal structural shape of a Langfuse generation handle. */
 export type LangfuseGenerationLike = {
   update(body: Record<string, unknown>): void;
@@ -47,13 +71,13 @@ export function langfuseHooksAdapter(span: LangfuseSpanLike): AgentHooks {
       generation = span.generation({
         name: "llm-call",
         model: ctx.modelId,
-        input: ctx.messages,
+        input: truncateForTrace(ctx.messages),
         metadata: { iteration: ctx.iteration, runId: ctx.runId },
       });
     },
     afterModelCall: (ctx) => {
       generation?.end({
-        output: ctx.response.text || ctx.response.toolCalls,
+        output: truncateForTrace(ctx.response.text || ctx.response.toolCalls),
         usage: {
           input: ctx.response.usage.inputTokens,
           output: ctx.response.usage.outputTokens,
@@ -69,8 +93,8 @@ export function langfuseHooksAdapter(span: LangfuseSpanLike): AgentHooks {
     afterToolCall: (ctx) => {
       span.event({
         name: `tool:${ctx.toolCall.name}`,
-        input: ctx.toolCall.input,
-        output: ctx.output,
+        input: truncateForTrace(ctx.toolCall.input),
+        output: truncateForTrace(ctx.output),
         level: ctx.isError ? "ERROR" : "DEFAULT",
         metadata: { durationMs: ctx.durationMs, iteration: ctx.iteration, runId: ctx.runId },
       });

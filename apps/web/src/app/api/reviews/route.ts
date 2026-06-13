@@ -1,8 +1,10 @@
-import { routeModel } from "@acr/agent";
+import { resolveModelIdForEnv, routeModel } from "@acr/agent";
 import type { ReviewOutput } from "@acr/agent";
+import { after } from "next/server";
 import { z } from "zod";
 
-import { checkAccessKey } from "@/lib/access-key";
+import { checkAccessKey, principalId } from "@/lib/access-key";
+import { serverEnv } from "@/lib/env";
 import { getLangfuse } from "@/lib/langfuse";
 import { applyRateLimit } from "@/lib/rate-limit";
 import {
@@ -18,12 +20,31 @@ const BodySchema = z.object({
   model: z.enum(["haiku", "sonnet", "opus", "auto"]).default("auto"),
 });
 
+/**
+ * Drain Langfuse *after* the response is sent. Awaiting `flushAsync()` inline
+ * blocks the user's submission on the observability backend — if Langfuse is
+ * slow or down, every review degrades. `after()` runs the flush post-response
+ * while the platform keeps the function alive, so tracing never sits on the
+ * request's critical path.
+ */
+function flushLangfuseAfterResponse(langfuse: ReturnType<typeof getLangfuse>): void {
+  if (!langfuse) return;
+  after(async () => {
+    try {
+      await langfuse.flushAsync();
+    } catch (err) {
+      console.error("[reviews] Langfuse flush failed:", { error: stringifyError(err) });
+    }
+  });
+}
+
 /** Persist a completed review row for a cache hit and return its id. */
 async function persistCachedReview(
   diff: string,
   model: string,
   output: ReviewOutput,
   cacheStatus: CacheStatus,
+  ownerId: string | null,
 ): Promise<string> {
   const { db } = await import("@acr/db/client");
   const { reviews } = await import("@acr/db");
@@ -32,6 +53,7 @@ async function persistCachedReview(
     .values({
       diff,
       model,
+      owner_id: ownerId,
       status: "completed",
       output,
       cache_status: cacheStatus,
@@ -69,9 +91,16 @@ export async function POST(req: Request) {
 
   const { diff, model: requestModel } = parsed.data;
 
+  // Tenancy seam: stamp the authenticated principal (null in open mode).
+  const ownerId = principalId(req);
+
   // 1. Model Routing (Phase 5)
   const selectedModel = requestModel === "auto" ? routeModel(diff) : requestModel;
-  const redisKey = exactCacheKey(selectedModel, diff);
+  // Cache by the concrete model id the review will run on (ARCH-4), so a tier
+  // repoint (e.g. sonnet → a newer model) doesn't serve stale outputs. The
+  // worker derives the same id from the same tier + env when it populates.
+  const cacheModelId = resolveModelIdForEnv(selectedModel, serverEnv);
+  const redisKey = exactCacheKey(cacheModelId, diff);
 
   const langfuse = getLangfuse();
   const trace = langfuse?.trace({
@@ -83,9 +112,15 @@ export async function POST(req: Request) {
   const exactOutput = await lookupExactCache(redisKey);
   if (exactOutput) {
     try {
-      const reviewId = await persistCachedReview(diff, selectedModel, exactOutput, "exact");
+      const reviewId = await persistCachedReview(
+        diff,
+        selectedModel,
+        exactOutput,
+        "exact",
+        ownerId,
+      );
       trace?.update({ metadata: { reviewId, cacheStatus: "exact" } });
-      await langfuse?.flushAsync();
+      flushLangfuseAfterResponse(langfuse);
       return Response.json({ reviewId, status: "completed" }, { status: 200 });
     } catch (err) {
       console.error("[reviews] Failed saving exact cache hit:", { error: stringifyError(err) });
@@ -93,12 +128,18 @@ export async function POST(req: Request) {
   }
 
   // 3. Check semantic cache (Postgres pgvector)
-  const { output: semanticOutput } = await lookupSemanticCache(diff, selectedModel);
+  const { output: semanticOutput } = await lookupSemanticCache(diff, cacheModelId);
   if (semanticOutput) {
     try {
-      const reviewId = await persistCachedReview(diff, selectedModel, semanticOutput, "semantic");
+      const reviewId = await persistCachedReview(
+        diff,
+        selectedModel,
+        semanticOutput,
+        "semantic",
+        ownerId,
+      );
       trace?.update({ metadata: { reviewId, cacheStatus: "semantic" } });
-      await langfuse?.flushAsync();
+      flushLangfuseAfterResponse(langfuse);
       return Response.json({ reviewId, status: "completed" }, { status: 200 });
     } catch (err) {
       console.error("[reviews] Failed saving semantic cache hit:", { error: stringifyError(err) });
@@ -110,7 +151,7 @@ export async function POST(req: Request) {
   const { reviews } = await import("@acr/db");
   const [inserted] = await db
     .insert(reviews)
-    .values({ diff, model: selectedModel, status: "pending" })
+    .values({ diff, model: selectedModel, owner_id: ownerId, status: "pending" })
     .returning({ id: reviews.id });
 
   if (!inserted) {
@@ -120,7 +161,7 @@ export async function POST(req: Request) {
 
   trace?.update({ metadata: { reviewId, cacheStatus: "miss" } });
 
-  await langfuse?.flushAsync();
+  flushLangfuseAfterResponse(langfuse);
 
   return Response.json({ reviewId, status: "queued" }, { status: 202 });
 }

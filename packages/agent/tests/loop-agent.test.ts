@@ -50,7 +50,7 @@ function mockProvider(responses: ScriptedResponse[]): ModelProvider {
   let callCount = 0;
   return {
     provider: "anthropic",
-    modelId: "claude-sonnet-4-7",
+    modelId: "claude-sonnet-4-6",
     generate: async (_request: ModelRequest): Promise<ModelResponse> => {
       const resp = responses[callCount++];
       if (!resp)

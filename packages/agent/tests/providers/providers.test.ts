@@ -56,13 +56,13 @@ describe("anthropic adapter", () => {
       usage: { input_tokens: 10, output_tokens: 5 },
       stop_reason: "tool_use",
     }));
-    const provider = anthropic("claude-sonnet-4-7", { client: { messages: { create } } });
+    const provider = anthropic("claude-sonnet-4-6", { client: { messages: { create } } });
 
     const res = await provider.generate(baseRequest);
 
     // Request shape
     const params = create.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(params.model).toBe("claude-sonnet-4-7");
+    expect(params.model).toBe("claude-sonnet-4-6");
     expect(params.system).toEqual([
       { type: "text", text: "you are a reviewer", cache_control: { type: "ephemeral" } },
     ]);
@@ -95,7 +95,7 @@ describe("anthropic adapter", () => {
       usage: { input_tokens: 1, output_tokens: 1 },
       stop_reason: "end_turn",
     }));
-    const provider = anthropic("claude-haiku-4-5", { client: { messages: { create } } });
+    const provider = anthropic("claude-haiku-4-5-20251001", { client: { messages: { create } } });
     const res = await provider.generate({ ...baseRequest, tools: [], messages: [] });
     expect(res.stopReason).toBe("stop");
     expect(res.toolCalls).toHaveLength(0);
@@ -219,12 +219,12 @@ describe("google adapter", () => {
 
 describe("resolveModel", () => {
   it("passes a provider object through untouched", () => {
-    const provider = anthropic("claude-sonnet-4-7", { client: { messages: { create: vi.fn() } } });
+    const provider = anthropic("claude-sonnet-4-6", { client: { messages: { create: vi.fn() } } });
     expect(resolveModel(provider)).toBe(provider);
   });
 
   it("routes model-id strings by prefix", () => {
-    expect(resolveModel("claude-sonnet-4-7").provider).toBe("anthropic");
+    expect(resolveModel("claude-sonnet-4-6").provider).toBe("anthropic");
     expect(resolveModel("gpt-4o").provider).toBe("openai");
     expect(resolveModel("o3-mini").provider).toBe("openai");
     expect(resolveModel("gemini-2.5-pro").provider).toBe("google");

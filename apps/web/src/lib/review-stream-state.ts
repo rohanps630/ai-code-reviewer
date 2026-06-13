@@ -46,11 +46,21 @@ export const INITIAL_REVIEW_STREAM_STATE: ReviewStreamState = {
   usage: null,
 };
 
+/** Max status messages retained in the ticker. A long review emits one per
+ *  iteration plus tool chatter; keeping only the most recent N bounds memory
+ *  and avoids an ever-scrolling wall of "Iteration X/10…" lines. */
+const MAX_TICKER_MESSAGES = 50;
+
 /** Fold a single chunk into the running state (pure). */
 export function applyChunk(state: ReviewStreamState, chunk: ReviewChunk): ReviewStreamState {
   switch (chunk.type) {
-    case "status":
-      return { ...state, ticker: [...state.ticker, chunk.message] };
+    case "status": {
+      const ticker = [...state.ticker, chunk.message];
+      return {
+        ...state,
+        ticker: ticker.length > MAX_TICKER_MESSAGES ? ticker.slice(-MAX_TICKER_MESSAGES) : ticker,
+      };
+    }
     case "text":
       return { ...state, text: state.text + chunk.delta };
     case "error":

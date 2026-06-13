@@ -26,6 +26,12 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      // Intentionally a dark-themed product. Declaring `color-scheme: dark`
+      // (not just the `dark` class) tells the browser to render native
+      // controls, scrollbars, and form widgets with dark-appropriate contrast,
+      // which a bare class does not — addressing the WCAG contrast risk of an
+      // undeclared scheme. (A light theme is a product decision, not a bug.)
+      style={{ colorScheme: "dark" }}
       className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
     >
       <body className="min-h-full bg-background text-foreground">{children}</body>

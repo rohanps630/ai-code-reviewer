@@ -14,6 +14,7 @@ export {
   PRICING_USD_PER_MTOK,
   getModelPricing,
   resolveModelId,
+  resolveModelIdForEnv,
   resolveProviderForTier,
 } from "./models.js";
 export type { ProviderEnvKeys, Tier } from "./models.js";

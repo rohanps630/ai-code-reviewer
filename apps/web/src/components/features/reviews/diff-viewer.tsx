@@ -113,7 +113,10 @@ export function DiffViewer({ diff, findings = [] }: { diff: string; findings?: F
                     key={`${j}-${line.slice(0, 8)}`}
                     className={cn("flex min-w-0", lineClass(line))}
                   >
-                    <span className="w-10 shrink-0 select-none border-white/5 border-r pr-3 text-right font-mono text-muted-foreground/30">
+                    <span
+                      aria-hidden="true"
+                      className="w-10 shrink-0 select-none border-white/5 border-r pr-3 text-right font-mono text-muted-foreground/30"
+                    >
                       {j + 1}
                     </span>
                     <code className="flex-1 whitespace-pre px-3">{line || " "}</code>

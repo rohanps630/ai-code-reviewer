@@ -1,8 +1,8 @@
-import type { ReviewOutput } from "@acr/agent";
 import type { Finding } from "@acr/agent";
 import { eq, reviews } from "@acr/db";
 import type { Review } from "@acr/db";
 import { ArrowLeft, Coins, GitPullRequest, RotateCcw, Timer } from "lucide-react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -13,10 +13,22 @@ import { ReviewPoller } from "@/components/features/reviews/review-poller";
 import { Badge } from "@/components/ui/badge";
 import { loadAgentEvents } from "@/lib/agent-events";
 import { type EvidenceItem, correlateEvidence } from "@/lib/finding-evidence";
+import { parseReviewOutput } from "@/lib/review-output";
 import { reconstructState } from "@/lib/review-stream-state";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
+
+/** Per-review browser/tab title so multiple open reviews are distinguishable
+ *  (screen readers announce it too). */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  return { title: `Review ${id.slice(0, 8)} · AI Code Reviewer` };
+}
 
 const STATUS_VARIANT: Record<Review["status"], "pending" | "streaming" | "completed" | "failed"> = {
   pending: "pending",
@@ -47,7 +59,9 @@ export default async function ReviewDetailPage({ params }: { params: Promise<{ i
   const [review, events] = await Promise.all([loadReview(id), loadAgentEvents(id)]);
   if (!review) notFound();
 
-  const output = review.output as ReviewOutput | null;
+  // JSONB is `unknown` at the boundary — validate, never cast. A corrupt row
+  // degrades to "No output yet" instead of crashing the render.
+  const output = parseReviewOutput(review.output);
   const groups = output ? groupByKey(output.findings, (f: Finding) => f.severity) : null;
   const cost = formatCost(review.cost_usd);
 
@@ -136,9 +150,9 @@ export default async function ReviewDetailPage({ params }: { params: Promise<{ i
                     </span>
                   </div>
                   <ul className="flex flex-col gap-2">
-                    {items.map((finding, i) => (
+                    {items.map((finding) => (
                       <FindingItem
-                        key={`${i}-${finding.summary.slice(0, 16)}`}
+                        key={`${sev}-${finding.category}-${finding.summary}`}
                         finding={finding as Finding}
                         evidence={findingEvidenceMap.get(finding as Finding)}
                       />

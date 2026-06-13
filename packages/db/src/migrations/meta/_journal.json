@@ -36,6 +36,20 @@
       "when": 1781114501664,
       "tag": "0004_smiling_jackpot",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1781342886615,
+      "tag": "0005_petite_maggott",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781344505555,
+      "tag": "0006_loose_doctor_strange",
+      "breakpoints": true
     }
   ]
 }

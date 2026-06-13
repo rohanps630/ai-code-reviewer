@@ -79,6 +79,12 @@ const serverSchema = z.object({
 
   // Minimal auth
   ACCESS_KEY: z.string().min(1).optional(),
+
+  // Rate limiting: number of trusted reverse proxies in front of the app.
+  // The real client IP is the Nth value from the right of X-Forwarded-For
+  // (proxies append, attackers can only prepend). Vercel and most single-PaaS
+  // deployments sit behind exactly one trusted hop. Set to 0 to ignore XFF.
+  TRUSTED_PROXY_HOP_COUNT: z.coerce.number().int().min(0).default(1),
 });
 
 // ---------------------------------------------------------------------------
@@ -166,6 +172,7 @@ export const serverEnv = parseOrPassthrough(serverSchema, {
   UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
   UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
   ACCESS_KEY: process.env.ACCESS_KEY,
+  TRUSTED_PROXY_HOP_COUNT: process.env.TRUSTED_PROXY_HOP_COUNT,
 });
 
 /**

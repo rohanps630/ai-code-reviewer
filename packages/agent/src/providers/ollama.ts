@@ -5,8 +5,8 @@
  * http://localhost:11434/v1. No API key is required.
  *
  * Usage:
- *   new Agent({ model: ollama("qwen3.5:latest") })
- *   new Agent({ model: "qwen3.5:latest" })  // auto-routed via registry (colon in ID)
+ *   new Agent({ model: ollama("qwen2.5:7b") })
+ *   new Agent({ model: "qwen2.5:7b" })  // auto-routed via registry (colon in ID)
  */
 
 import type { OAIClientLike } from "./openai-compat.js";

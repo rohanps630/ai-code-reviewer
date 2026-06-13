@@ -19,23 +19,23 @@ describe("resolveProviderForTier (real, not mocked)", () => {
     const provider = await resolveProviderForTier("sonnet", MOCK_ENV);
     expect(provider).toBeDefined();
     expect(provider.provider).toBe("anthropic");
-    expect(provider.modelId).toBe("claude-sonnet-4-7");
+    expect(provider.modelId).toBe("claude-sonnet-4-6");
     expect(typeof provider.generate).toBe("function");
   });
 
   it("resolves 'haiku' to Haiku model ID", async () => {
     const provider = await resolveProviderForTier("haiku", MOCK_ENV);
-    expect(provider.modelId).toBe("claude-haiku-4-5");
+    expect(provider.modelId).toBe("claude-haiku-4-5-20251001");
   });
 
   it("resolves 'opus' to Opus model ID", async () => {
     const provider = await resolveProviderForTier("opus", MOCK_ENV);
-    expect(provider.modelId).toBe("claude-opus-4-7");
+    expect(provider.modelId).toBe("claude-opus-4-8");
   });
 
   it("falls back to sonnet for unknown tier strings", async () => {
     const provider = await resolveProviderForTier("unknown-tier", MOCK_ENV);
-    expect(provider.modelId).toBe("claude-sonnet-4-7");
+    expect(provider.modelId).toBe("claude-sonnet-4-6");
   });
 
   it("selects Groq when only GROQ_API_KEY is set", async () => {

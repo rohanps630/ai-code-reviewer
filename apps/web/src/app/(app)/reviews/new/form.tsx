@@ -74,7 +74,8 @@ function ModelSelector({
   disabled: boolean;
 }) {
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <fieldset className="grid grid-cols-2 gap-2 border-0 p-0" disabled={disabled}>
+      <legend className="sr-only">Review model</legend>
       {MODEL_OPTIONS.map((opt) => {
         const selected = value === opt.value;
         return (
@@ -119,7 +120,7 @@ function ModelSelector({
           </label>
         );
       })}
-    </div>
+    </fieldset>
   );
 }
 
