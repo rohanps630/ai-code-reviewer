@@ -22,7 +22,7 @@ class PredictedFinding(BaseModel):
 
     model_config = ConfigDict(
         populate_by_name=True,
-        extra="forbid",
+        extra="ignore",  # agent may emit extra fields (e.g. explanation); ignore them
         frozen=True,
     )
 

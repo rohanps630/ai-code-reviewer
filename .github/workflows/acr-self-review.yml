@@ -1,0 +1,78 @@
+name: ACR Self-Review
+
+# The ACR bot reviews its own pull requests.
+# Uses the acr-review CLI (apps/cli) with LocalRetriever (git grep — no pgvector/Voyage needed).
+# Only needs ANTHROPIC_API_KEY; GITHUB_TOKEN is injected automatically.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  # One review per PR at a time; a new push cancels the in-flight review.
+  group: ${{ github.workflow }}-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: AI review
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Skip PRs from forks — they can't access secrets. Maintainers can
+    # trigger manually via workflow_dispatch if needed.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Check out the PR head so git grep searches the post-PR codebase.
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages and CLI
+        run: |
+          pnpm build:packages
+          pnpm --filter @acr/cli build
+        env:
+          SKIP_ENV_VALIDATION: "1"
+
+      - name: Gate on ANTHROPIC_API_KEY
+        id: gate
+        env:
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+        run: echo "skip=${{ env.HAS_KEY == 'true' && 'false' || 'true' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Run ACR review
+        if: steps.gate.outputs.skip == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          node apps/cli/dist/cli.js \
+            --pr "${{ github.event.pull_request.html_url }}"
+
+      - name: Post skip notice
+        if: steps.gate.outputs.skip == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '⚠️ **ACR self-review skipped.** `ANTHROPIC_API_KEY` is not configured as a repo secret. Add it under Settings → Secrets and variables → Actions.',
+            });

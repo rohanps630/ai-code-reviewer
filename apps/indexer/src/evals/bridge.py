@@ -204,6 +204,11 @@ def _parse_envelope(stdout: str, *, example_id: str) -> BridgeResult:
             ) from exc
         raise BridgeError(f"agent-bridge reported failure for {example_id}: {failure.error}")
 
+    # Clamp cost_usd — floating-point arithmetic in the TS pricing table can
+    # produce tiny negative values (e.g. -0.003); treat them as 0.
+    if isinstance(payload.get("cost_usd"), float) and payload["cost_usd"] < 0:
+        payload["cost_usd"] = 0.0
+
     try:
         success = _SuccessEnvelope.model_validate(payload)
     except ValidationError as exc:
