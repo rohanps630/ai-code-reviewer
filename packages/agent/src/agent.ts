@@ -8,7 +8,7 @@
  * the `model`.
  *
  *   const agent = new Agent({
- *     model: "claude-sonnet-4-7",            // or anthropic(...) / openai(...) / google(...)
+ *     model: "claude-sonnet-4-6",            // or anthropic(...) / openai(...) / google(...)
  *     tools: [searchCodeTool, readFileTool],
  *     systemPrompt: "You are the reviewer...",
  *   });
@@ -687,16 +687,22 @@ type ToolExecResult = {
   durationMs: number;
 };
 
-/** Cost of one step (USD). Cache-write = input × 1.25, cache-read = input ×
- *  0.1 — the formula `runReview` has always used. */
+/** Cost of one step (USD).
+ *
+ * Anthropic's API returns inputTokens as the non-cached portion only;
+ * cacheReadTokens and cacheCreationTokens are separate and NOT included
+ * in inputTokens. The old formula subtracted them again, producing negative
+ * costs whenever the system prompt was cached.
+ *
+ * Rates: cache-write = input × 1.25, cache-read = input × 0.1.
+ */
 function stepCost(usage: TokenUsage, pricing: { input: number; output: number }): number {
   const cacheRead = usage.cacheReadTokens ?? 0;
   const cacheWrite = usage.cacheCreationTokens ?? 0;
-  const baseInput = usage.inputTokens - cacheRead - cacheWrite;
   const writeRate = pricing.input * 1.25;
   const readRate = pricing.input * 0.1;
   return (
-    (baseInput / 1_000_000) * pricing.input +
+    (usage.inputTokens / 1_000_000) * pricing.input +
     (cacheRead / 1_000_000) * readRate +
     (cacheWrite / 1_000_000) * writeRate +
     (usage.outputTokens / 1_000_000) * pricing.output

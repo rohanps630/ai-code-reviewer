@@ -202,12 +202,15 @@ describe("usage + cost accounting", () => {
   });
 
   it("prices cache tokens with the read/write multipliers", async () => {
+    // Anthropic returns inputTokens as the NON-cached portion only.
+    // cache tokens are separate fields, not included in inputTokens.
+    // Scenario: 500k non-cached, 400k cache-read, 100k cache-write.
     const agent = new Agent({
       model: scriptedProvider([
         {
           toolCalls: [submitCall("ok")],
           usage: {
-            inputTokens: 1_000_000,
+            inputTokens: 500_000,
             outputTokens: 0,
             cacheReadTokens: 400_000,
             cacheCreationTokens: 100_000,
@@ -220,7 +223,7 @@ describe("usage + cost accounting", () => {
     const events = await collect(agent.stream("go"));
     const final = events.at(-1);
     if (final?.type === "final") {
-      // base = 500k → 5.0 ; read 400k×(10×0.1)=1 → 0.4 ; write 100k×(10×1.25)=12.5 → 1.25
+      // base 500k×10 → 5.0 ; read 400k×(10×0.1)=1 → 0.4 ; write 100k×(10×1.25)=12.5 → 1.25
       expect(final.usage.costUsd).toBeCloseTo(5.0 + 0.4 + 1.25, 6);
       expect(final.usage.cacheReadTokens).toBe(400_000);
       expect(final.usage.cacheCreationTokens).toBe(100_000);
