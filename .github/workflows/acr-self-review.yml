@@ -27,7 +27,7 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Check out the PR head so git grep searches the post-PR codebase.
           ref: ${{ github.event.pull_request.head.sha }}
