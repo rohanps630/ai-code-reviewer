@@ -21,7 +21,7 @@ jobs:
       # Don't also pass `version:` here — action-setup@v4 errors on a double spec.
       - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: ".nvmrc"
           cache: "pnpm"
@@ -48,7 +48,7 @@ jobs:
       # Don't also pass `version:` here — action-setup@v4 errors on a double spec.
       - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: ".nvmrc"
           cache: "pnpm"
@@ -72,7 +72,7 @@ jobs:
       # Don't also pass `version:` here — action-setup@v4 errors on a double spec.
       - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: ".nvmrc"
           cache: "pnpm"
