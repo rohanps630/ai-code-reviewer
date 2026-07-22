@@ -24,8 +24,8 @@
   "dependencies": {
     "@acr/db": "workspace:*",
     "@acr/shared": "workspace:*",
-    "@anthropic-ai/sdk": "^0.104.1",
-    "@e2b/code-interpreter": "^2.6.0",
+    "@anthropic-ai/sdk": "^0.112.5",
+    "@e2b/code-interpreter": "^2.6.1",
     "@google/genai": "^1.0.0",
     "openai": "^4.77.0",
     "zod": "^3.23.0"
